@@ -31,6 +31,9 @@ Package.resolved
 *.!sync
 *.bts
 
+# Asset optimizer local build cache
+.optimize_cache.json
+
 # Heavy runtime content.
 # Keep source code and project structure in Git; keep scene/media assets local.
 UP_AR/RuntimeContent/

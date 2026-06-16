@@ -15,6 +15,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			explicitFolders = (
 				Content/UI,
+				Content/TestLevel,
 			);
 			path = UP_AR;
 			sourceTree = "<group>";

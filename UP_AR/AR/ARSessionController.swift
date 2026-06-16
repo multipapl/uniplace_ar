@@ -27,7 +27,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var isSessionRunning = false
     private var didLogFirstFrame = false
     private var didLogFirstFloorDetection = false
-    private let levelProvider: LevelProvider = PlaceholderLevelProvider()
+    private let levelProvider: LevelProvider =
+        ManifestLevelProvider(fallback: PlaceholderLevelProvider())
 
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
