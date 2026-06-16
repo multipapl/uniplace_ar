@@ -258,7 +258,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = UniPlace;
-				INFOPLIST_KEY_NSCameraUsageDescription = "UniPlace uses the camera only to track device motion; the camera image is never shown.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "UniPlace uses the camera to find the floor during calibration and to track device motion.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -295,7 +295,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = UniPlace;
-				INFOPLIST_KEY_NSCameraUsageDescription = "UniPlace uses the camera only to track device motion; the camera image is never shown.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "UniPlace uses the camera to find the floor during calibration and to track device motion.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

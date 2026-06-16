@@ -16,6 +16,9 @@ struct UP_ARApp: App {
         WindowGroup {
             RootView()
                 .environment(appModel)
+                .onAppear {
+                    TimingDiagnostics.log("root view appeared")
+                }
         }
     }
 }

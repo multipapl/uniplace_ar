@@ -12,24 +12,33 @@ struct RootView: View {
     @Environment(AppModel.self) private var appModel
 
     var body: some View {
-        switch appModel.phase {
-        case .start:
-            StartView()
-        case .calibrating, .placed:
-            ZStack {
+        ZStack {
+            if appModel.shouldWarmUpShell {
                 ARViewContainer()
                     .ignoresSafeArea()
+            }
 
-                if appModel.phase == .calibrating {
+            if appModel.isShellReady {
+                switch appModel.phase {
+                case .start:
+                    StartView()
+                case .calibrating:
                     CalibrationOverlay()
-                } else {
+                case .placed:
                     PresentationHUD()
                 }
 
-                if appModel.showDebugOverlay {
-                    DebugOverlay()
+                if appModel.phase != .start {
+                    if appModel.showDebugOverlay {
+                        DebugOverlay()
+                    }
                 }
+            } else {
+                LoadingView()
             }
+        }
+        .onAppear {
+            appModel.beginShellWarmup()
         }
     }
 }

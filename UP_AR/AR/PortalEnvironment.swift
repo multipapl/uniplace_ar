@@ -12,11 +12,10 @@ import ARKit
 import UIKit
 
 enum PortalEnvironment {
-    /// Apply the portal look to an ARView: AR camera mode (so the device pose drives the rendered
-    /// camera), passthrough feed hidden behind a neutral grey, no real-world compositing.
+    /// Apply shared ARView setup. The background is switched separately because calibration shows
+    /// the real camera feed, while the placed portal hides it.
     static func configure(_ arView: ARView) {
         arView.cameraMode = .ar
-        arView.environment.background = .color(.init(white: 0.5, alpha: 1))
         arView.environment.sceneUnderstanding.options = []
 
         arView.renderOptions.insert(.disableMotionBlur)
@@ -25,8 +24,19 @@ enum PortalEnvironment {
         arView.debugOptions = []
     }
 
-    /// World-tracking config tuned for a hidden-feed portal: floor planes only, no texturing/lighting,
-    /// lightest 60-fps video format (the feed is hidden, so resolution is wasted bandwidth/heat).
+    /// Passthrough mode: show the camera feed for calibration and drift debugging.
+    static func showCalibrationFeed(_ arView: ARView) {
+        arView.environment.background = .cameraFeed()
+        arView.debugOptions = []
+    }
+
+    /// Portal mode: hide the passthrough feed behind a virtual background.
+    static func showPortalBackground(_ arView: ARView) {
+        arView.environment.background = .color(.init(white: 0.5, alpha: 1))
+        arView.debugOptions = []
+    }
+
+    /// World-tracking config tuned for portal tracking: floor planes only, no texturing/lighting.
     static func makeConfiguration() -> ARWorldTrackingConfiguration {
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal]
