@@ -18,6 +18,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var hierarchy: SceneHierarchy?
     private var calibrationPreviewAnchor: AnchorEntity?
     private var calibrationPreviewPlane: ModelEntity?
+    private var teleportPreviewAnchor: AnchorEntity?
+    private var teleportPreviewDisc: ModelEntity?
+    private var pendingTeleportTarget: SIMD3<Float>?
     private var latestCalibrationFloorTransform: simd_float4x4?
     private var calibrationStartedAt: CFTimeInterval = 0
     private var isPlacingScene = false
@@ -52,12 +55,17 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         case .calibrating:
             beginCalibration()
         case .placed:
-            PortalEnvironment.showCalibrationFeed(arView)
+            PortalEnvironment.showPortalBackground(arView)
             startSession(resetTracking: true)
         }
 
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        arView.addGestureRecognizer(tap)
+        // One press recogniser (zero delay) drives both phases: a quick press in calibration confirms
+        // the floor on release; in the placed scene a press shows the teleport target, dragging moves
+        // it, and releasing teleports there.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(handlePress))
+        press.minimumPressDuration = 0
+        press.allowableMovement = .greatestFiniteMagnitude
+        arView.addGestureRecognizer(press)
 
         startDisplayLink()
     }
@@ -87,13 +95,21 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
 
     // MARK: - Tap handling
 
-    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+    @objc private func handlePress(_ recognizer: UILongPressGestureRecognizer) {
         guard let arView else { return }
         let point = recognizer.location(in: arView)
         switch appModel.phase {
-        case .calibrating: confirmCalibration()
-        case .placed:      teleport(at: point)
-        case .start:       break
+        case .calibrating:
+            if recognizer.state == .ended { confirmCalibration() }
+        case .placed:
+            switch recognizer.state {
+            case .began, .changed: updateTeleportPreview(at: point)
+            case .ended:           commitTeleport()
+            case .cancelled, .failed: removeTeleportPreview()
+            default: break
+            }
+        case .start:
+            break
         }
     }
 
@@ -114,8 +130,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         } else {
             appModel.floorDetected = false
             removeCalibrationPreview()
-            appModel.calibrationTitle = "Шукаю підлогу"
-            appModel.lastMessage = "Підлогу ще не знайдено"
+            appModel.calibrationTitle = "Looking for the floor"
+            appModel.lastMessage = "Floor not found yet"
             return
         }
 
@@ -139,7 +155,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             arView.scene.removeAnchor(old.originAnchor)
         }
         removeCalibrationPreview()
-        PortalEnvironment.showCalibrationFeed(arView)
+        // Hide the passthrough feed: the placed scene is a portal into a virtual room, not classic AR.
+        PortalEnvironment.showPortalBackground(arView)
         let newHierarchy = SceneHierarchy(floorTransform: floorTransform, content: content)
         arView.scene.addAnchor(newHierarchy.originAnchor)
         hierarchy = newHierarchy
@@ -153,22 +170,74 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         MemoryDiagnostics.log("scene placed")
     }
 
-    private func teleport(at point: CGPoint) {
-        guard let arView, let hierarchy else { return }
-        guard let hit = arView.hitTest(point, query: .nearest, mask: .all).first else {
-            appModel.lastMessage = "Tap a spot on the floor"
-            return
+    /// World point on the floor under a screen point, or nil when the ray misses the floor collider.
+    private func floorTarget(at point: CGPoint) -> SIMD3<Float>? {
+        guard let arView else { return nil }
+        guard let hit = arView.hitTest(point, query: .nearest, mask: .all).first else { return nil }
+        let world = hit.position
+        return LocomotionController.isPlausibleTarget(world) ? world : nil
+    }
+
+    /// Show/move the teleport target marker while the finger is down. A miss keeps the last valid
+    /// target so a small slip off the floor doesn't drop the pending destination.
+    private func updateTeleportPreview(at point: CGPoint) {
+        guard let arView, let target = floorTarget(at: point) else { return }
+        pendingTeleportTarget = target
+
+        let anchor: AnchorEntity
+        if let teleportPreviewAnchor {
+            anchor = teleportPreviewAnchor
+        } else {
+            anchor = AnchorEntity(world: matrix_identity_float4x4)
+            teleportPreviewAnchor = anchor
+            arView.scene.addAnchor(anchor)
         }
+        anchor.setPosition(target + SIMD3<Float>(0, 0.01, 0), relativeTo: nil)
 
-        let tappedWorld = hit.position
-        guard LocomotionController.isPlausibleTarget(tappedWorld) else { return }
+        if teleportPreviewDisc == nil {
+            let disc = makeTeleportPreviewDisc()
+            teleportPreviewDisc = disc
+            anchor.addChild(disc)
+        }
+        appModel.lastMessage = "Release to teleport"
+    }
 
+    /// On release: teleport to the marker if there is a valid target, then clear the marker.
+    private func commitTeleport() {
+        if let target = pendingTeleportTarget {
+            performTeleport(toWorld: target)
+        }
+        removeTeleportPreview()
+    }
+
+    private func performTeleport(toWorld tappedWorld: SIMD3<Float>) {
+        guard let arView, let hierarchy else { return }
         let cam = arView.cameraTransform.translation
         let floorY = hierarchy.originAnchor.position(relativeTo: nil).y
         let userGround = SIMD3<Float>(cam.x, floorY, cam.z)
         let shift = LocomotionController.teleportShift(userGround: userGround, tappedWorld: tappedWorld)
         hierarchy.applyTeleportShift(shift)
         appModel.lastMessage = "Teleported"
+    }
+
+    private func makeTeleportPreviewDisc() -> ModelEntity {
+        let radius: Float = 0.45
+        var material = UnlitMaterial(color: UIColor(red: 0.25, green: 0.95, blue: 1.0, alpha: 0.5))
+        material.blending = .transparent(opacity: 0.5)
+        material.faceCulling = .none
+        let mesh = MeshResource.generatePlane(width: radius * 2, depth: radius * 2, cornerRadius: radius)
+        let disc = ModelEntity(mesh: mesh, materials: [material])
+        disc.name = "TeleportPreview"
+        return disc
+    }
+
+    private func removeTeleportPreview() {
+        if let teleportPreviewAnchor {
+            arView?.scene.removeAnchor(teleportPreviewAnchor)
+        }
+        teleportPreviewAnchor = nil
+        teleportPreviewDisc = nil
+        pendingTeleportTarget = nil
     }
 
     // MARK: - ARExperienceActions
@@ -184,8 +253,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         lastCalibrationReadoutTimestamp = 0
         PortalEnvironment.showCalibrationFeed(arView)
         appModel.floorDetected = false
-        appModel.calibrationTitle = "Підготовка"
-        appModel.lastMessage = "Стань у стартову позицію"
+        appModel.calibrationTitle = "Preparing"
+        appModel.lastMessage = "Stand at the start position"
         if !isSessionRunning {
             startSession(resetTracking: true)
         }
@@ -292,8 +361,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             if appModel.floorDetected {
                 appModel.floorDetected = false
             }
-            appModel.calibrationTitle = "Підготовка"
-            appModel.lastMessage = "Стань у стартову позицію"
+            appModel.calibrationTitle = "Preparing"
+            appModel.lastMessage = "Stand at the start position"
             return
         }
 
@@ -311,11 +380,11 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
 
         appModel.floorDetected = detected
         appModel.calibrationTitle = detected
-            ? "Підлогу знайдено"
-            : "Шукаю підлогу"
+            ? "Floor found"
+            : "Looking for the floor"
         appModel.lastMessage = detected
-            ? "Тапни, щоб підтвердити старт"
-            : "Наведи центр на підлогу"
+            ? "Tap to confirm start"
+            : "Aim the center at the floor"
     }
 
     private func reticlePoint(in arView: ARView) -> CGPoint {
@@ -323,21 +392,37 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     }
 
     private func currentCalibrationFloorTransform() -> simd_float4x4? {
-        if let raycastTransform = reticleFloorRaycast() {
-            latestCalibrationFloorTransform = raycastTransform
-            return raycastTransform
+        // The preview must always sit under the reticle (screen center) — that is what the user aims.
+        // A direct reticle raycast hit is already under the reticle; the sampled points and plane
+        // anchors only contribute the floor *height*, and we re-project the camera-forward ray onto
+        // that height. We never fall back to an off-center sample or a plane center, which is what
+        // used to make the grid slide sideways or behind the camera.
+        if let hit = reticleFloorRaycast() {
+            let flat = flattenedFloorTransform(at: hit.columns.3)
+            latestCalibrationFloorTransform = flat
+            return flat
         }
-        if let sampledTransform = sampledFloorRaycast() {
-            let reticleTransform = transformAtReticle(floorY: sampledTransform.columns.3.y) ?? sampledTransform
-            latestCalibrationFloorTransform = reticleTransform
-            return reticleTransform
-        }
-        if let anchorTransform = largestHorizontalPlaneTransform() {
-            let reticleTransform = transformAtReticle(floorY: anchorTransform.columns.3.y) ?? anchorTransform
+        if let floorY = fallbackFloorY(),
+           let reticleTransform = transformAtReticle(floorY: floorY) {
             latestCalibrationFloorTransform = reticleTransform
             return reticleTransform
         }
         return latestCalibrationFloorTransform
+    }
+
+    /// Best available floor height when the reticle ray itself misses — never a full position.
+    private func fallbackFloorY() -> Float? {
+        if let sampled = sampledFloorRaycast() { return sampled.columns.3.y }
+        if let plane = largestHorizontalPlaneTransform() { return plane.columns.3.y }
+        return latestCalibrationFloorTransform?.columns.3.y
+    }
+
+    /// Gravity-aligned, axis-aligned floor transform at a world point (drops any inherited yaw so the
+    /// preview grid stays flat and consistent instead of rotating with the detected plane).
+    private func flattenedFloorTransform(at translation: SIMD4<Float>) -> simd_float4x4 {
+        var transform = matrix_identity_float4x4
+        transform.columns.3 = SIMD4<Float>(translation.x, translation.y, translation.z, 1)
+        return transform
     }
 
     private func reticleFloorRaycast() -> simd_float4x4? {

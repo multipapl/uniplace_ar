@@ -32,7 +32,7 @@ enum PortalEnvironment {
 
     /// Portal mode: hide the passthrough feed behind a virtual background.
     static func showPortalBackground(_ arView: ARView) {
-        arView.environment.background = .color(.init(white: 0.5, alpha: 1))
+        arView.environment.background = .color(.init(white: 0.12, alpha: 1))
         arView.debugOptions = []
     }
 

@@ -30,7 +30,7 @@ final class AppModel {
     var eyeHeight: Float = 0       // device height above the calibrated floor (m)
     var heightNudge: Float = 0     // manual floor correction applied since calibration (m)
     var lastMessage: String = "Ready"
-    var calibrationTitle = "Шукаю підлогу"
+    var calibrationTitle = "Looking for the floor"
     var floorDetected = false
 
     // HUD / overlay toggles.
@@ -64,8 +64,8 @@ final class AppModel {
         TimingDiagnostics.log("open virtual camera tapped")
         phase = .calibrating
         floorDetected = false
-        calibrationTitle = "Підготовка"
-        lastMessage = "Наведи центр на підлогу"
+        calibrationTitle = "Preparing"
+        lastMessage = "Aim the center at the floor"
         actions?.beginCalibration()
     }
 
