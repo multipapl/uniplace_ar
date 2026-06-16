@@ -10,10 +10,7 @@ import SwiftUI
 struct LoadingView: View {
     var body: some View {
         ZStack {
-            LinearGradient(colors: [.black, Color(white: 0.1)],
-                           startPoint: .top,
-                           endPoint: .bottom)
-                .ignoresSafeArea()
+            BlurredCoverBackground(imageName: "loading_screen")
 
             VStack(spacing: 18) {
                 Text("UniPlace")

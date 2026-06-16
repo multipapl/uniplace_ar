@@ -12,9 +12,7 @@ struct StartView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [.black, Color(white: 0.12)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            BlurredCoverBackground(imageName: "main_menu")
 
             VStack(spacing: 32) {
                 Spacer()

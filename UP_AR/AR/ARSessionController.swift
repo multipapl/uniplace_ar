@@ -19,7 +19,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var calibrationPreviewAnchor: AnchorEntity?
     private var calibrationPreviewPlane: ModelEntity?
     private var latestCalibrationFloorTransform: simd_float4x4?
+    private var calibrationStartedAt: CFTimeInterval = 0
     private var isPlacingScene = false
+    private var isSessionRunning = false
     private var didLogFirstFrame = false
     private var didLogFirstFloorDetection = false
     private let levelProvider: LevelProvider = PlaceholderLevelProvider()
@@ -27,6 +29,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
     private var lastCalibrationReadoutTimestamp: CFTimeInterval = 0
+    private let calibrationPreviewDelay: CFTimeInterval = 0.9
 
     // Throttle for the (background-queue) frame read-outs, so we only hop to the main actor ~10/s.
     private nonisolated(unsafe) var lastReadoutHop: TimeInterval = 0
@@ -45,11 +48,12 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         switch appModel.phase {
         case .start:
             PortalEnvironment.showPortalBackground(arView)
+            startSession(resetTracking: true)
         case .calibrating:
             beginCalibration()
         case .placed:
             PortalEnvironment.showCalibrationFeed(arView)
-            startSession()
+            startSession(resetTracking: true)
         }
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
@@ -58,19 +62,25 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         startDisplayLink()
     }
 
-    private func startSession() {
+    private func startSession(resetTracking: Bool) {
         guard ARWorldTrackingConfiguration.isSupported else {
             appModel.lastMessage = "AR unavailable (simulator?) — tap to place the scene"
+            appModel.finishShellWarmup()
             return
         }
         TimingDiagnostics.log("ARSession run begin")
+        let options: ARSession.RunOptions = resetTracking
+            ? [.resetTracking, .removeExistingAnchors]
+            : []
         arView?.session.run(PortalEnvironment.makeConfiguration(),
-                            options: [.resetTracking, .removeExistingAnchors])
+                            options: options)
+        isSessionRunning = true
         TimingDiagnostics.log("ARSession run returned")
     }
 
     func pause() {
         arView?.session.pause()
+        isSessionRunning = false
         displayLink?.invalidate()
         displayLink = nil
     }
@@ -104,6 +114,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         } else {
             appModel.floorDetected = false
             removeCalibrationPreview()
+            appModel.calibrationTitle = "Шукаю підлогу"
             appModel.lastMessage = "Підлогу ще не знайдено"
             return
         }
@@ -166,14 +177,18 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         guard let arView else { return }
         removeCalibrationPreview()
         latestCalibrationFloorTransform = nil
+        calibrationStartedAt = CACurrentMediaTime()
         isPlacingScene = false
         didLogFirstFrame = false
         didLogFirstFloorDetection = false
         lastCalibrationReadoutTimestamp = 0
         PortalEnvironment.showCalibrationFeed(arView)
         appModel.floorDetected = false
-        appModel.lastMessage = "Наведи центр на підлогу"
-        startSession()
+        appModel.calibrationTitle = "Підготовка"
+        appModel.lastMessage = "Стань у стартову позицію"
+        if !isSessionRunning {
+            startSession(resetTracking: true)
+        }
     }
 
     func recenter() {
@@ -203,6 +218,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             guard let self, !didLogFirstFrame else { return }
             didLogFirstFrame = true
             TimingDiagnostics.log("first AR frame")
+            appModel.finishShellWarmup()
         }
 
         guard timestamp - lastReadoutHop > 0.1 else { return }
@@ -271,6 +287,16 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         lastCalibrationReadoutTimestamp = now
 
         let floorTransform = currentCalibrationFloorTransform()
+        guard now - calibrationStartedAt >= calibrationPreviewDelay else {
+            removeCalibrationPreview()
+            if appModel.floorDetected {
+                appModel.floorDetected = false
+            }
+            appModel.calibrationTitle = "Підготовка"
+            appModel.lastMessage = "Стань у стартову позицію"
+            return
+        }
+
         let detected = floorTransform != nil
         if let floorTransform {
             if !didLogFirstFloorDetection {
@@ -284,8 +310,11 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         guard detected != appModel.floorDetected else { return }
 
         appModel.floorDetected = detected
+        appModel.calibrationTitle = detected
+            ? "Підлогу знайдено"
+            : "Шукаю підлогу"
         appModel.lastMessage = detected
-            ? "Тапни, щоб підтвердити"
+            ? "Тапни, щоб підтвердити старт"
             : "Наведи центр на підлогу"
     }
 
@@ -294,15 +323,30 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     }
 
     private func currentCalibrationFloorTransform() -> simd_float4x4? {
-        if let raycastTransform = sampledFloorRaycast() {
+        if let raycastTransform = reticleFloorRaycast() {
             latestCalibrationFloorTransform = raycastTransform
             return raycastTransform
         }
+        if let sampledTransform = sampledFloorRaycast() {
+            let reticleTransform = transformAtReticle(floorY: sampledTransform.columns.3.y) ?? sampledTransform
+            latestCalibrationFloorTransform = reticleTransform
+            return reticleTransform
+        }
         if let anchorTransform = largestHorizontalPlaneTransform() {
-            latestCalibrationFloorTransform = anchorTransform
-            return anchorTransform
+            let reticleTransform = transformAtReticle(floorY: anchorTransform.columns.3.y) ?? anchorTransform
+            latestCalibrationFloorTransform = reticleTransform
+            return reticleTransform
         }
         return latestCalibrationFloorTransform
+    }
+
+    private func reticleFloorRaycast() -> simd_float4x4? {
+        guard let arView else { return nil }
+        let center = reticlePoint(in: arView)
+        if let hit = floorRaycast(at: center, allowing: .existingPlaneGeometry) {
+            return hit
+        }
+        return floorRaycast(at: center, allowing: .estimatedPlane)
     }
 
     private func sampledFloorRaycast() -> simd_float4x4? {
@@ -331,6 +375,30 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             CGPoint(x: center.x + offset, y: center.y),
             CGPoint(x: center.x, y: center.y - offset)
         ]
+    }
+
+    private func transformAtReticle(floorY: Float) -> simd_float4x4? {
+        guard let frame = arView?.session.currentFrame else { return nil }
+        let cameraTransform = frame.camera.transform
+        let origin = SIMD3<Float>(
+            cameraTransform.columns.3.x,
+            cameraTransform.columns.3.y,
+            cameraTransform.columns.3.z
+        )
+        let forward = SIMD3<Float>(
+            -cameraTransform.columns.2.x,
+            -cameraTransform.columns.2.y,
+            -cameraTransform.columns.2.z
+        )
+        guard abs(forward.y) > 0.001 else { return nil }
+
+        let distance = (floorY - origin.y) / forward.y
+        guard distance > 0 else { return nil }
+
+        let position = origin + forward * distance
+        var transform = matrix_identity_float4x4
+        transform.columns.3 = SIMD4<Float>(position.x, floorY, position.z, 1)
+        return transform
     }
 
     private func floorRaycast(at point: CGPoint,
@@ -373,15 +441,40 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         }
 
         if calibrationPreviewPlane == nil {
-            var material = UnlitMaterial(color: UIColor(red: 0.35, green: 0.95, blue: 1.0, alpha: 0.3))
-            material.blending = .transparent(opacity: 0.3)
+            var material = UnlitMaterial(color: UIColor(red: 0.25, green: 0.95, blue: 1.0, alpha: 0.14))
+            material.blending = .transparent(opacity: 0.14)
 
-            let plane = ModelEntity(mesh: .generatePlane(width: 0.85, depth: 0.85),
+            let plane = ModelEntity(mesh: .generatePlane(width: 1.45, depth: 1.45),
                                     materials: [material])
             plane.name = "CalibrationFloorPreview"
             plane.position.y = 0.002
             calibrationPreviewPlane = plane
             anchor.addChild(plane)
+            addCalibrationPreviewDots(to: anchor)
+        }
+    }
+
+    private func addCalibrationPreviewDots(to anchor: AnchorEntity) {
+        var dotMaterial = UnlitMaterial(color: UIColor(red: 0.65, green: 1.0, blue: 1.0, alpha: 0.58))
+        dotMaterial.blending = .transparent(opacity: 0.58)
+
+        let dotSize: Float = 0.026
+        let spacing: Float = 0.18
+        let count = 7
+        let origin = -Float(count - 1) * spacing / 2
+
+        for row in 0..<count {
+            for column in 0..<count {
+                let dot = ModelEntity(mesh: .generatePlane(width: dotSize, depth: dotSize),
+                                      materials: [dotMaterial])
+                dot.name = "CalibrationFloorPreviewDot"
+                dot.position = [
+                    origin + Float(column) * spacing,
+                    0.006,
+                    origin + Float(row) * spacing
+                ]
+                anchor.addChild(dot)
+            }
         }
     }
 

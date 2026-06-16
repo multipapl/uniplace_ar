@@ -70,3 +70,8 @@ UP_AR/Content/SFX/
 # App icons and small catalog assets are source, not runtime content.
 !UP_AR/Assets.xcassets/
 !UP_AR/Assets.xcassets/**
+
+# Lightweight UI source assets.
+!UP_AR/Content/UI/
+!UP_AR/Content/UI/loading_screen.jpg
+!UP_AR/Content/UI/main_menu.jpg

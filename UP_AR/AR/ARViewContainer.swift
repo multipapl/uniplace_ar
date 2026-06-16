@@ -6,7 +6,6 @@
 //  all session/tap/scene logic lives in ARSessionController (the coordinator).
 //
 
-import Foundation
 import RealityKit
 import SwiftUI
 
@@ -25,9 +24,6 @@ struct ARViewContainer: UIViewRepresentable {
         TimingDiagnostics.log("ARView created")
         context.coordinator.attach(to: arView)
         TimingDiagnostics.log("ARView attached")
-        DispatchQueue.main.async {
-            appModel.finishShellWarmup()
-        }
         return arView
     }
 
