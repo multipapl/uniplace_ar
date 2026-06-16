@@ -1,0 +1,72 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode user/local state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode build products
+DerivedData/
+build/
+Build/
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Swift Package Manager / dependency caches
+.build/
+.swiftpm/
+Package.resolved
+
+# Local secrets and generated config
+*.env
+*.local
+
+# Resilio / sync sidecars
+.sync/
+*.sync
+*.!sync
+*.bts
+
+# Heavy runtime content.
+# Keep source code and project structure in Git; keep scene/media assets local.
+UP_AR/RuntimeContent/
+UP_AR/LocalContent/
+UP_AR/Content/Levels/
+UP_AR/Content/Gallery/
+UP_AR/Content/Audio/
+UP_AR/Content/SFX/
+
+# RealityKit / USD scene payloads
+*.usdz
+*.usd
+*.usda
+*.usdc
+*.reality
+*.rcproject
+
+# Large media and texture payloads
+*.mov
+*.mp4
+*.m4v
+*.mp3
+*.m4a
+*.wav
+*.aiff
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+*.hdr
+*.exr
+*.ktx
+*.ktx2
+
+# App icons and small catalog assets are source, not runtime content.
+!UP_AR/Assets.xcassets/
+!UP_AR/Assets.xcassets/**
