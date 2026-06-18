@@ -1,9 +1,0 @@
-{
-  "id": "test",
-  "title": "Test Scene",
-  "spawn": { "entity": "StartPosition" },
-  "layers": [
-    { "file": "Scene.usdz", "type": "unlit" },
-    { "file": "Navmesh.usdz", "type": "navmesh" }
-  ]
-}

@@ -14,8 +14,11 @@
 		0F14BE152FE1785E00106D5E /* UP_AR */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			explicitFolders = (
+				Content/Floor,
+				Content/ProbesTextures,
+				Content/Shared,
+				Content/Terrace,
 				Content/UI,
-				Content/TestLevel,
 			);
 			path = UP_AR;
 			sourceTree = "<group>";

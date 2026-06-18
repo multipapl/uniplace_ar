@@ -1,0 +1,34 @@
+{
+  "shared": [],
+  "scenes": [
+    {
+      "id": "floor",
+      "title": "Поверх",
+      "spawn": { "entity": "LO_StartPosition" },
+      "layers": [
+        { "file": "LO_Scene.usdz",       "type": "unlit" },
+        { "file": "LO_Probes.usdz",      "type": "probes" },
+        { "file": "LO_Reflect.usdz",     "type": "reflect" },
+        { "file": "LO_Translusent.usdz", "type": "translucent" },
+        { "file": "LO_Navmesh.usdz",     "type": "navmesh" }
+      ]
+    },
+    {
+      "id": "terrace",
+      "title": "Тераса",
+      "spawn": { "entity": "TR_StartPosition" },
+      "layers": [
+        { "file": "TR_Scene.usdz",       "type": "unlit" },
+        { "file": "TR_Translusent.usdz", "type": "translucent" },
+        { "file": "TR_Navmesh.usdz",     "type": "navmesh" }
+      ]
+    }
+  ],
+  "materials": {
+    "unlit": {},
+    "navmesh": { "debugVisible": false },
+    "probes": { "reflectionIntensityExponent": 1.4 },
+    "reflect": { "reflectMaterialPacking": "auto" },
+    "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 }
+  }
+}

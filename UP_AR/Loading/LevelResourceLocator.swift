@@ -3,20 +3,21 @@
 //  UP_AR (UniPlace)
 //
 //  Resolves level files in the app bundle. Prefers an ASTC-compiled `.reality` sibling over the raw
-//  `.usdz` named in the manifest (the optimize script ships textured layers only as `.reality`), so
-//  the manifest never has to be touched. Tries the preserved `Content/TestLevel` subdirectory first,
-//  then a flat-bundle fallback, so it works regardless of how Xcode lays the resources out.
+//  `.usdz` named in the manifest (the optimize script ships textured layers only as `.reality`), so the
+//  manifest never has to be touched. Content is split into per-scene subfolders (`Shared`, `Floor`,
+//  `Terrace`); layer file names are globally unique (LO_/TR_ prefixes), so we just search every content
+//  subfolder and fall back to a flat bundle lookup — no scene→folder mapping needed.
 //
 
 import Foundation
 
 struct LevelResourceLocator {
-    /// Bundle subdirectory the explicit `Content/TestLevel` folder lands in (its last path component).
-    let subdirectory: String
+    /// Bundle subdirectories searched in order; the optimizer's content folders.
+    let subdirectories: [String]
     private let bundle: Bundle
 
-    init(subdirectory: String = "TestLevel", bundle: Bundle = .main) {
-        self.subdirectory = subdirectory
+    init(subdirectories: [String] = ["Shared", "Floor", "Terrace", "ProbesTextures"], bundle: Bundle = .main) {
+        self.subdirectories = subdirectories
         self.bundle = bundle
     }
 
@@ -41,7 +42,6 @@ struct LevelResourceLocator {
     }
 
     func loadManifest(named name: String) throws -> LevelManifest { try decode(name) }
-    func loadMaterialConfig(named name: String) throws -> MaterialConfig { try decode(name) }
 
     private func decode<T: Decodable>(_ name: String) throws -> T {
         guard let url = lookup(base: name, ext: "json") else {
@@ -51,8 +51,13 @@ struct LevelResourceLocator {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
+    /// Search each content subfolder, then the flat bundle root.
     private func lookup(base: String, ext: String) -> URL? {
-        bundle.url(forResource: base, withExtension: ext, subdirectory: subdirectory)
-            ?? bundle.url(forResource: base, withExtension: ext)
+        for subdirectory in subdirectories {
+            if let url = bundle.url(forResource: base, withExtension: ext, subdirectory: subdirectory) {
+                return url
+            }
+        }
+        return bundle.url(forResource: base, withExtension: ext)
     }
 }
