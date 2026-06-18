@@ -17,15 +17,15 @@ start ──(pick a scene)──▶ calibrating ──(tap floor)──▶ loadi
 - **start** — `StartView`, a scene picker (one button per scene, listed from the manifest). Picking a
   scene sets `selectedSceneId` and enters calibration. Pure SwiftUI — **no AR runs here**, so the
   menu appears instantly with nothing heavy before it.
-- **calibrating** — aim the reticle at the floor; the chosen scene is prefetched in the background
-  during this time. The tap sets the origin and the camera's eye height.
-- **loading** — floor confirmed; a loading screen covers the scene until it is **fully** loaded and
-  has rendered (no half-built pop-in, no confirm freeze).
+- **calibrating** — aim the reticle at the floor. Nothing heavy runs yet — the level is **not**
+  loaded here, so the calibration camera stays smooth. The tap sets the origin and the eye height.
+- **loading** — floor confirmed; the level loads **now**, behind a loading screen that covers the
+  scene until it is **fully** loaded and has rendered (no half-built pop-in, no confirm freeze).
 - **placed** — the level is anchored on the floor; physical walking, teleport, and recenter are live.
 
 The AR shell is only spun up on scene selection (not at launch): `openVirtualCamera` calls
 `beginShellWarmup`, `RootView` mounts the `ARView` for non-`start` phases, and `LoadingView` covers it
-until ready. See `AppModel` and `ARSessionController`'s prefetch.
+until ready. See `AppModel` and `ARSessionController`'s `placeScene`.
 
 ## Module map
 

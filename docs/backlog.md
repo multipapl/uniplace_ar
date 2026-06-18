@@ -12,8 +12,8 @@ from a set). Today `LoadingView` hardcodes `loading_screen`. Turn it into someth
 Launching/loading under the **Xcode debug session is ~3× slower and the session sometimes drops**.
 Running the same build **directly on the iPad (untethered)** is fast — scene load is near-instant.
 → Do **not** judge app/load performance from a tethered debug run. Profile memory/timing from an
-untethered launch (or Instruments attach) instead. The deferred-loading design (prefetch during
-calibration, reveal after full load) is fine as-is.
+untethered launch (or Instruments attach) instead. The deferred-loading design (load after the floor
+is confirmed, behind the loading screen, reveal after full load) is fine as-is.
 
 ## Probes layer ships textures twice
 The `*_Probes.reality` layer still embeds the probe textures, and we also extract them to
