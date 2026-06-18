@@ -1,5 +1,7 @@
 {
-  "shared": [],
+  "shared": [
+    { "file": "Skybox.usdz", "type": "skybox" }
+  ],
   "scenes": [
     {
       "id": "floor",
@@ -26,9 +28,10 @@
   ],
   "materials": {
     "unlit": {},
+    "skybox": {},
     "navmesh": { "debugVisible": false },
     "probes": { "reflectionIntensityExponent": 1.4 },
-    "reflect": { "reflectMaterialPacking": "auto" },
+    "reflect": { "reflectMaterialPacking": "auto", "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 },
     "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 }
   }
 }
