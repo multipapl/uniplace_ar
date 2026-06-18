@@ -23,6 +23,7 @@ final class MaterialPipeline {
             "navmesh": NavmeshProcessor(),
             "skybox": SkyboxProcessor(),
             "emission": EmissionProcessor(),
+            "fire": FireProcessor(),
             "translucent": TranslucentProcessor(),
             "curtains": CurtainsProcessor(),
             "probes": ProbesProcessor(),

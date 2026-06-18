@@ -14,6 +14,8 @@
         { "file": "LO_Translusent.usdz", "type": "translucent" },
         { "file": "LO_Curtains.usdz",    "type": "curtains" },
         { "file": "LO_Glass.usdz",       "type": "glass" },
+        { "file": "LO_Emission.usdz",    "type": "emission" },
+        { "file": "LO_Fire.usdz",        "type": "fire" },
         { "file": "LO_Navmesh.usdz",     "type": "navmesh" }
       ]
     },
@@ -32,6 +34,8 @@
     "unlit": {},
     "skybox": {},
     "navmesh": { "debugVisible": false },
+    "emission": { "emissionBrightness": 2.0, "emissionTint": [1.0, 1.0, 1.0] },
+    "fire": { "fireVideo": "Fire_Alpha_Runtime.mov" },
     "probes": { "reflectionIntensityExponent": 1.4 },
     "reflect": { "reflectMaterialPacking": "auto", "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 },
     "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 },

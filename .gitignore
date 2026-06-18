@@ -47,6 +47,7 @@ UP_AR/Content/Floor/
 UP_AR/Content/Terrace/
 UP_AR/Content/Shared/
 UP_AR/Content/ProbesTextures/
+UP_AR/Content/Videos/
 
 # RealityKit / USD scene payloads
 *.usdz

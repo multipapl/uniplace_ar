@@ -28,6 +28,13 @@ struct MaterialConfig: Decodable {
         var translucentBaseColorUVIndex: Int?
         var translucentAlphaUVIndex: Int?
 
+        // emission
+        var emissionBrightness: Float?
+        var emissionTint: [Float]?
+
+        // fire (looping alpha video material)
+        var fireVideo: String?
+
         // curtains
         var curtainOpacity: Float?
         var curtainTint: [Float]?
