@@ -130,6 +130,11 @@ def is_probes(stem):
     return stem.endswith("_Probes")
 
 
+def is_skybox(stem):
+    # The skybox is exempt from the global texture cap — it must stay full resolution (8k).
+    return "skybox" in stem.lower()
+
+
 # ─── reflection-probe extraction ────────────────────────────────────────────────
 def extract_probes(rkassets):
     """Copy each probe plane's env texture into PROBES_DIR (downscaled to PROBE_MAX_SIZE for cheap IBL)
@@ -203,8 +208,13 @@ def compile_layer(usdz, work, max_size):
     if not images:
         return None  # geometry-only — caller ships the plain usdz
 
-    # Probe layers are capped harder (PROBE_MAX_SIZE) than the global cap, regardless of --max-size.
-    layer_max = PROBE_MAX_SIZE if is_probes(stem) else max_size
+    # Per-layer texture cap: probes capped hardest, skybox never capped (needs 8k), else the global cap.
+    if is_probes(stem):
+        layer_max = PROBE_MAX_SIZE
+    elif is_skybox(stem):
+        layer_max = None
+    else:
+        layer_max = max_size
     if layer_max:
         scaled = downscale_images(images, layer_max)
         print("    %d textures (%d downscaled to <=%dpx)" % (len(images), scaled, layer_max))
