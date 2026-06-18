@@ -16,8 +16,13 @@ than an AR overlay.
   aim at the real floor.
 - `showPortalBackground(_:)` — the flat virtual background that hides the feed in the placed scene.
 - `makeConfiguration()` — `ARWorldTrackingConfiguration` tuned for the portal: horizontal planes
-  only, no environment texturing, light estimation off, gravity alignment, and the lightest
-  ≥60 FPS video format (tracking cost down, framerate up).
+  only, no environment texturing, light estimation off, gravity alignment, autofocus locked (the
+  portal hides the feed, so focus hunting would only add pose jitter). On LiDAR devices it turns
+  on `sceneReconstruction = .mesh` — not for occlusion (the portal hides passthrough) but because the
+  depth mesh makes floor detection near-instant and steadies tracking. Video format scales with the
+  device: capable (LiDAR) devices take the **highest-resolution** ≥60 FPS feed — more visual features
+  → steadier tracking — while weaker devices keep the **lightest** ≥60 FPS format to protect the
+  framerate.
 
 ## Floor calibration
 
@@ -31,24 +36,41 @@ raycast when it can; otherwise it takes only the floor *height* from sampled poi
 horizontal plane and re-projects the camera-forward ray onto that height. It never falls back to an
 off-center sample or a plane center — that is what used to make the grid slide sideways.
 
-On confirm (`confirmCalibration`), the eye height is `camera.y − floor.y`; the scene is then placed.
-There is a simulator fallback (identity transform, 1.4 m eye height) so the flow stays testable
-without AR.
+On confirm (`confirmCalibration`), the origin is placed **under the user's feet, facing the authored
+spawn direction**:
+
+- **Position**: floor *height* from the reticle hit, *horizontal* position from the camera. Combined
+  with the spawn alignment in `ManifestLevelProvider` (which slides the scene so its spawn empty sits
+  at the origin), the iPad physically stands on the scene's `*_StartPosition` empty at load.
+- **Facing**: the origin also carries a yaw from `LocomotionController.spawnOriginYaw`, computed from
+  the camera's heading and the manifest `spawn.yawDegrees`. Because the spawn empty sits at the origin,
+  this rotates the scene about the user's feet, so the viewer looks down the authored direction no
+  matter which way the iPad physically points. `yawDegrees: 0` ⇒ face the scene's local −Z.
+
+The eye height is `camera.y − floor.y`. There is a simulator fallback (identity transform, 1.4 m eye
+height) so the flow stays testable without AR.
 
 ## Scene placement & hierarchy (`SceneHierarchy`)
 
 `placeScene` asks the `LevelProvider` for content, then builds the pivot tree:
 
 ```
-originAnchor (calibrated floor pose)
-└── locomotionRoot (teleport / recenter offset ONLY)
-    └── sceneContent (the level)
+originAnchor (calibrated floor pose, driven by a tracked ARAnchor)
+└── calibrationRoot (manual height nudge ONLY)
+    └── locomotionRoot (teleport / recenter offset ONLY)
+        └── sceneContent (the level)
 ```
 
-- **Physical walking** is free: ARKit moves the camera through this static tree.
+- **Anchoring**: on device, `originAnchor` binds to a session-managed `ARAnchor` (`AnchorEntity(anchor:)`),
+  not a fixed `AnchorEntity(world:)`. ARKit keeps that anchor pinned to the physical floor as it
+  refines its world map (loop closure / relocalization), so map corrections no longer surface as
+  visible horizontal/vertical jumps. The simulator / no-AR path falls back to a fixed world anchor.
+  `detachFromSession()` drops the ARAnchor on scene unload so anchors don't leak across switches.
+- **Physical walking** is free: ARKit moves the camera through this tree.
 - **Teleport / recenter / snap-turn** mutate `locomotionRoot` only — the raw sensor pose is never
   overwritten (a hard rule from the brief: teleport is an offset, not a pose write).
-- **`nudgeHeight`** shifts `originAnchor.y` to correct a floor-height estimate.
+- **`nudgeHeight`** shifts `calibrationRoot.y` (not `originAnchor.y`, which ARKit now drives) to
+  correct a floor-height estimate.
 
 ## Teleport
 

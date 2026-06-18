@@ -43,19 +43,41 @@ enum PortalEnvironment {
         config.environmentTexturing = .none
         config.isLightEstimationEnabled = false
         config.worldAlignment = .gravity
-        if let format = lightestSixtyFPSFormat() {
+
+        // The portal hides the passthrough feed, so camera sharpness buys us nothing — but autofocus
+        // hunting shifts the camera intrinsics and surfaces as a "breathing"/refocusing jitter in the
+        // tracked pose. Lock focus to keep the rendered scene steady.
+        config.isAutoFocusEnabled = false
+
+        // LiDAR (Pro devices): the depth mesh makes floor detection near-instant and more accurate,
+        // and steadies tracking. We don't use the mesh for occlusion (the portal hides passthrough),
+        // only as a tracking/plane-fitting aid.
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            config.sceneReconstruction = .mesh
+        }
+
+        if let format = preferredVideoFormat() {
             config.videoFormat = format
         }
         return config
     }
 
-    private static func lightestSixtyFPSFormat() -> ARConfiguration.VideoFormat? {
+    /// Pick the 60 FPS camera format. Capable devices (LiDAR present) can afford the highest-resolution
+    /// 60 FPS feed — more visual features → steadier tracking. Weaker devices keep the lightest 60 FPS
+    /// format to protect the framerate of the rendered scene.
+    private static func preferredVideoFormat() -> ARConfiguration.VideoFormat? {
         let formats = ARWorldTrackingConfiguration.supportedVideoFormats
         let sixty = formats.filter { $0.framesPerSecond >= 60 }
         let pool = sixty.isEmpty ? formats : sixty
-        return pool.min { lhs, rhs in
-            (lhs.imageResolution.width * lhs.imageResolution.height) <
-            (rhs.imageResolution.width * rhs.imageResolution.height)
-        }
+        guard !pool.isEmpty else { return nil }
+
+        let capable = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+        return capable
+            ? pool.max { pixelCount($0) < pixelCount($1) }
+            : pool.min { pixelCount($0) < pixelCount($1) }
+    }
+
+    private static func pixelCount(_ format: ARConfiguration.VideoFormat) -> Double {
+        format.imageResolution.width * format.imageResolution.height
     }
 }

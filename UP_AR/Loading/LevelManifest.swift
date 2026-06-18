@@ -23,9 +23,15 @@ struct LevelManifest: Decodable {
     }
 
     /// Where the viewer starts: the name of an empty in the scene (currently in the navmesh layer)
-    /// moved onto the calibrated floor origin at load time.
+    /// moved onto the calibrated floor origin at load time, plus the direction the viewer should face.
     struct Spawn: Decodable {
         let entity: String
+        /// Desired facing at spawn, in degrees about +Y in scene-local space. The origin is rotated so
+        /// this direction lands on the iPad's physical heading at calibration — so the viewer faces it
+        /// regardless of where they physically point. Absent ⇒ 0 (face the scene's local −Z).
+        let yawDegrees: Float?
+
+        var yawRadians: Float { (yawDegrees ?? 0) * .pi / 180 }
     }
 
     /// One selectable scene (e.g. the floor or the terrace).
@@ -36,6 +42,8 @@ struct LevelManifest: Decodable {
         /// Per-scene HomePod music multiplier. UP_AR loads floor/terrace separately, so this is the
         /// discrete equivalent of AVP's altitude-driven terrace duck.
         let musicVolume: Float?
+        /// Per-scene vertical offset, in meters, applied only to shared skybox layers.
+        let skyboxHeightOffset: Float?
         let layers: [Layer]
     }
 

@@ -58,6 +58,9 @@ struct ManifestLevelProvider: LevelProvider {
             entity.name = layer.file
             await pipeline.process(entity, type: layer.type,
                                    params: materials.params(for: layer.type), context: context)
+            if layer.type == "skybox", let offset = scene.skyboxHeightOffset {
+                entity.position.y += offset
+            }
             sceneRoot.addChild(entity)
             MemoryDiagnostics.log("loaded layer \(layer.file) [\(layer.type)]")
         }

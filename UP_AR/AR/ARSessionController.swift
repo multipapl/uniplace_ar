@@ -161,8 +161,20 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         let eyeHeight: Float
 
         if let hit = currentCalibrationFloorTransform() {
-            floorTransform = hit
-            eyeHeight = arView.cameraTransform.translation.y - hit.columns.3.y
+            // Anchor the world under the user's feet, not under the aimed reticle. Take the detected
+            // floor *height* from the reticle hit, but the *horizontal* position from the camera, so
+            // the scene's spawn empty — which ManifestLevelProvider aligns to this origin — lands
+            // exactly where the iPad physically stands when the level loads. The origin also carries a
+            // yaw so the scene rotates about that point and the viewer faces the authored spawn
+            // direction, regardless of which way the iPad physically points.
+            let cam = arView.cameraTransform.translation
+            let floorY = hit.columns.3.y
+            let yaw = LocomotionController.spawnOriginYaw(cameraForward: cameraForward(arView),
+                                                          spawnYawRadians: selectedSpawnYawRadians())
+            var origin = simd_float4x4(simd_quatf(angle: yaw, axis: [0, 1, 0]))
+            origin.columns.3 = SIMD4<Float>(cam.x, floorY, cam.z, 1)
+            floorTransform = origin
+            eyeHeight = cam.y - floorY
         } else if !ARWorldTrackingConfiguration.isSupported {
             // Simulator / no-AR fallback so the UI flow stays testable.
             floorTransform = matrix_identity_float4x4
@@ -204,7 +216,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         }
         let audioSettings = currentSceneAudioSettings()
 
-        let newHierarchy = SceneHierarchy(floorTransform: floorTransform, content: content)
+        // Bind to a session-managed ARAnchor on device so ARKit keeps the floor pinned as it refines
+        // its world map; fall back to a fixed world anchor where world tracking isn't available.
+        let session: ARSession? = ARWorldTrackingConfiguration.isSupported ? arView.session : nil
+        let newHierarchy = SceneHierarchy(floorTransform: floorTransform, content: content, session: session)
         arView.scene.addAnchor(newHierarchy.originAnchor)
         hierarchy = newHierarchy
 
@@ -366,6 +381,21 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.eyeHeight -= delta   // raising the scene lowers the apparent eye height
     }
 
+    func setRenderScale(_ scale: Double) {
+        guard let arView else { return }
+        let clamped = min(max(scale, AppModel.minRenderScale), AppModel.maxRenderScale)
+        arView.contentScaleFactor = UIScreen.main.scale * clamped
+        TimingDiagnostics.log(String(format: "render scale %.2f", clamped))
+    }
+
+    func setAudioBackgrounded(_ backgrounded: Bool) {
+        if backgrounded {
+            ambientController?.suspend()
+        } else {
+            ambientController?.resume()
+        }
+    }
+
     func snapTurn(_ degrees: Float) {
         guard let arView, let hierarchy else { return }
         let camera = arView.cameraTransform.translation
@@ -439,9 +469,23 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         teardownSceneAudio()
         removeTeleportPreview()
         if let arView, let old = hierarchy {
+            old.detachFromSession()
             arView.scene.removeAnchor(old.originAnchor)
         }
         hierarchy = nil
+    }
+
+    /// The camera's horizontal-ish forward (its −Z axis in world space) for spawn-facing alignment.
+    private func cameraForward(_ arView: ARView) -> SIMD3<Float> {
+        let z = arView.cameraTransform.matrix.columns.2
+        return SIMD3<Float>(-z.x, -z.y, -z.z)
+    }
+
+    /// Authored spawn facing for the selected scene, in radians. Falls back to 0 (face scene −Z).
+    private func selectedSpawnYawRadians() -> Float {
+        guard let manifest = try? LevelResourceLocator().loadManifest(named: "LevelManifest"),
+              let scene = manifest.scene(id: appModel.selectedSceneId) else { return 0 }
+        return scene.spawn.yawRadians
     }
 
     private func currentSceneAudioSettings() -> SceneAudioSettings {
@@ -466,7 +510,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
                 AmbientSoundController.Configuration.Source(
                     namePrefix: $0.namePrefix,
                     file: $0.file,
-                    volume: Self.clampUnit($0.volume ?? 1),
+                    volume: appModel.savedAudioChannelVolume(
+                        id: $0.namePrefix,
+                        default: Self.clampUnit($0.volume ?? 1)
+                    ),
                     attenuationRadius: max($0.attenuationRadius ?? 5, 0.1)
                 )
             }
@@ -475,7 +522,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         return AmbientSoundController.Configuration(
             sources: sources,
             rooftopFile: rooftopFile,
-            rooftopVolume: Self.clampUnit(ambient.rooftopVolume ?? 0.6),
+            rooftopVolume: appModel.savedAudioChannelVolume(
+                id: "rooftop",
+                default: Self.clampUnit(ambient.rooftopVolume ?? 0.6)
+            ),
             rooftopYawDegrees: ambient.rooftopYawDegrees ?? 0
         )
     }
@@ -571,7 +621,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             emitter: emitter,
             tracks: tracks,
             shuffle: config.shuffle,
-            volume: config.defaultVolume,
+            volume: appModel.savedAudioChannelVolume(id: "music", default: config.defaultVolume),
             gainBoost: Audio.Decibel(config.gainBoostDB),
             reverb: musicReverb(preset: config.reverbPreset, levelDB: config.reverbLevelDB)
         )
