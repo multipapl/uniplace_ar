@@ -12,6 +12,8 @@
         { "file": "LO_Probes.usdz",      "type": "probes" },
         { "file": "LO_Reflect.usdz",     "type": "reflect" },
         { "file": "LO_Translusent.usdz", "type": "translucent" },
+        { "file": "LO_Curtains.usdz",    "type": "curtains" },
+        { "file": "LO_Glass.usdz",       "type": "glass" },
         { "file": "LO_Navmesh.usdz",     "type": "navmesh" }
       ]
     },
@@ -32,6 +34,8 @@
     "navmesh": { "debugVisible": false },
     "probes": { "reflectionIntensityExponent": 1.4 },
     "reflect": { "reflectMaterialPacking": "auto", "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 },
-    "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 }
+    "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 },
+    "curtains": { "curtainOpacity": 0.82, "curtainTint": [1.0, 1.0, 1.0], "curtainBrightness": 1.3 },
+    "glass": { "glassOpacity": 0.18, "glassRoughness": 0.03, "glassSpecular": 1.0, "glassClearcoat": 1.0, "glassClearcoatRoughness": 0.02 }
   }
 }
