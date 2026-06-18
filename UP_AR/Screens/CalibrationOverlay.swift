@@ -35,47 +35,38 @@ struct CalibrationOverlay: View {
             .allowsHitTesting(false)
 
             VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        appModel.recalibrate()
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 18, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .background(.black.opacity(0.55), in: Circle())
-                            .overlay {
-                                Circle()
-                                    .stroke(.white.opacity(0.24), lineWidth: 1)
-                            }
-                    }
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("Reset floor")
-                }
-                .padding(.top, 20)
-                .padding(.horizontal, 18)
-
                 Spacer()
+
+                HStack {
+                    ChromeIconButton(systemName: "chevron.left", title: "Main Menu") {
+                        appModel.returnToMainMenu()
+                    }
+
+                    Spacer()
+
+                    ChromeIconButton(systemName: "arrow.counterclockwise", title: "Recalibrate") {
+                        appModel.recalibrate()
+                    }
+                }
+                .padding(.bottom, 22)
+                .padding(.horizontal, 20)
             }
 
             VStack {
                 Spacer()
                 VStack(spacing: 8) {
                     Text(appModel.calibrationTitle)
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .semibold))
                     Text(appModel.lastMessage)
-                        .font(.subheadline)
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.78))
                 }
                 .foregroundStyle(.white)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 20)
-                .background(.black.opacity(0.55), in: .rect(cornerRadius: 14))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(markerColor.opacity(0.7), lineWidth: 1)
-                }
-                .padding(.bottom, 80)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 22)
+                .background(.black.opacity(0.52), in: .rect(cornerRadius: AppChrome.panelRadius))
+                .overlay(RoundedRectangle(cornerRadius: AppChrome.panelRadius).stroke(markerColor.opacity(0.55), lineWidth: 1))
+                .padding(.bottom, 96)
             }
             .allowsHitTesting(false)
         }

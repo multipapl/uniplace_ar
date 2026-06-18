@@ -12,7 +12,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var appModel
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             if appModel.phase == .start {
                 // The menu is pure SwiftUI — shown instantly, with no ARView/ARKit warmup behind it.
                 StartView()
@@ -31,6 +31,7 @@ struct RootView: View {
                     }
                     if appModel.showDebugOverlay && appModel.phase == .placed {
                         DebugOverlay()
+                            .padding(16)
                     }
                 } else {
                     LoadingView()

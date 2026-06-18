@@ -12,25 +12,17 @@ struct DebugOverlay: View {
     @Environment(AppModel.self) private var appModel
 
     var body: some View {
-        VStack {
-            Spacer()
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(format: "FPS    %.0f", appModel.fps))
-                    Text("Track  \(appModel.trackingStateLabel)")
-                    Text("Pose   \(appModel.poseLabel)")
-                    Text(String(format: "Eye    %.2f m", appModel.eyeHeight))
-                    Text(String(format: "Nudge  %+.2f m", appModel.heightNudge))
-                    Text("Mem    \(MemoryDiagnostics.footprintLabel())")
-                }
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.green)
-                .padding(10)
-                .background(.black.opacity(0.6), in: .rect(cornerRadius: 8))
-                Spacer()
-            }
-            .padding()
+        VStack(alignment: .leading, spacing: 4) {
+            Text(String(format: "FPS    %.0f", appModel.fps))
+            Text("Track  \(appModel.trackingStateLabel)")
+            Text(String(format: "Eye    %.2f m", appModel.eyeHeight))
+            Text(String(format: "Nudge  %+.2f m", appModel.heightNudge))
         }
+        .font(.system(.caption, design: .monospaced))
+        .foregroundStyle(.green)
+        .padding(10)
+        .background(.black.opacity(0.72), in: .rect(cornerRadius: 8))
+        .fixedSize()
         .allowsHitTesting(false)
     }
 }

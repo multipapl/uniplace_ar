@@ -43,13 +43,20 @@ struct BlurredCoverBackground: View {
 }
 
 private extension UIImage {
+    static let contentImageCache = NSCache<NSString, UIImage>()
+
     static func contentUIImage(named imageName: String) -> UIImage? {
+        if let cached = contentImageCache.object(forKey: imageName as NSString) {
+            return cached
+        }
         guard let url = Bundle.main.url(forResource: imageName,
                                         withExtension: "jpg",
                                         subdirectory: "UI") else {
             return nil
         }
 
-        return UIImage(contentsOfFile: url.path)
+        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+        contentImageCache.setObject(image, forKey: imageName as NSString)
+        return image
     }
 }
