@@ -16,6 +16,7 @@
         { "file": "LO_Glass.usdz",       "type": "glass" },
         { "file": "LO_Emission.usdz",    "type": "emission" },
         { "file": "LO_Fire.usdz",        "type": "fire" },
+        { "file": "LO_Homepod.usdz",     "type": "homepod" },
         { "file": "LO_Navmesh.usdz",     "type": "navmesh" }
       ]
     },
@@ -40,6 +41,14 @@
     "reflect": { "reflectMaterialPacking": "auto", "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 },
     "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 },
     "curtains": { "curtainOpacity": 0.82, "curtainTint": [1.0, 1.0, 1.0], "curtainBrightness": 1.3 },
-    "glass": { "glassOpacity": 0.18, "glassRoughness": 0.03, "glassSpecular": 1.0, "glassClearcoat": 1.0, "glassClearcoatRoughness": 0.02 }
+    "glass": { "glassOpacity": 0.18, "glassRoughness": 0.03, "glassSpecular": 1.0, "glassClearcoat": 1.0, "glassClearcoatRoughness": 0.02 },
+    "homepod": {
+      "homepodScreenEntity": "homepod2_screen",
+      "homepodScreenVideo": "homepod_screen_v001.mp4",
+      "homepodBodyEntity": "_1K_homepod2_body_Baked",
+      "musicShuffle": true,
+      "musicDefaultVolume": 1.0,
+      "musicGainBoostDB": 10
+    }
   }
 }

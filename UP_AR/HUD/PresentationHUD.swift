@@ -21,6 +21,13 @@ struct PresentationHUD: View {
                     Image(systemName: "line.3.horizontal").hudIcon()
                 }
                 Spacer()
+                if appModel.musicAvailable {
+                    Button {
+                        appModel.openMusicPanel()
+                    } label: {
+                        Image(systemName: "music.note").hudIcon()
+                    }
+                }
                 Button {
                     appModel.recenter()
                 } label: {
@@ -32,6 +39,10 @@ struct PresentationHUD: View {
         }
         .sheet(isPresented: $appModel.showMenu) {
             MenuSheet()
+                .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $appModel.showMusicPanel) {
+            NowPlayingCard()
                 .presentationDetents([.medium])
         }
     }

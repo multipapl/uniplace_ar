@@ -24,6 +24,7 @@ final class MaterialPipeline {
             "skybox": SkyboxProcessor(),
             "emission": EmissionProcessor(),
             "fire": FireProcessor(),
+            "homepod": HomepodProcessor(),
             "translucent": TranslucentProcessor(),
             "curtains": CurtainsProcessor(),
             "probes": ProbesProcessor(),

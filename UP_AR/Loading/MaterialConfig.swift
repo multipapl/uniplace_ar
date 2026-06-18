@@ -35,6 +35,17 @@ struct MaterialConfig: Decodable {
         // fire (looping alpha video material)
         var fireVideo: String?
 
+        // homepod (unlit body + looping screen video + spatial-music emitter)
+        var homepodScreenEntity: String?   // mesh that receives the looping screen video
+        var homepodScreenVideo: String?     // opaque looped video file driving the screen
+        var homepodBodyEntity: String?      // body mesh; the music emitter sits at its bounds centre
+        // spatial-music playback tuning, carried to the emitter for the music controller to consume
+        var musicShuffle: Bool?
+        var musicDefaultVolume: Float?
+        var musicGainBoostDB: Float?        // loudness calibration added on top of user volume
+        var musicReverbPreset: String?      // RealityKit reverb preset; "none"/omit disables reverb
+        var musicReverbLevelDB: Float?
+
         // curtains
         var curtainOpacity: Float?
         var curtainTint: [Float]?

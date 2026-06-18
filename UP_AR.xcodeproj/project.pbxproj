@@ -14,6 +14,7 @@
 		0F14BE152FE1785E00106D5E /* UP_AR */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			explicitFolders = (
+				Content/Audio,
 				Content/Floor,
 				Content/ProbesTextures,
 				Content/Shared,

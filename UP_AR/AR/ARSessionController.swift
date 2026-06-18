@@ -8,6 +8,7 @@
 
 import RealityKit
 import ARKit
+import AVFoundation
 import Combine
 import QuartzCore
 import UIKit
@@ -33,6 +34,13 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         ManifestLevelProvider(sceneId: appModel.selectedSceneId, fallback: PlaceholderLevelProvider())
     }
 
+    /// The in-scene HomePod player, built from the placed scene's `MusicEmitter`. Nil when the scene
+    /// has no HomePod / no bundled tracks. The homepod root is kept for the tap-to-open gesture.
+    private var musicController: SpatialMusicController?
+    private weak var homepodEntity: Entity?
+    private var pressOnHomepod = false
+    private var lastMusicReadout: CFTimeInterval = 0
+
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
     private var lastCalibrationReadoutTimestamp: CFTimeInterval = 0
@@ -45,6 +53,17 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         self.appModel = appModel
         super.init()
         appModel.actions = self
+        configureAudioSession()
+    }
+
+    /// `.playback` so music keeps playing under the silent switch / in the background; `.mixWithOthers`
+    /// so the muted looping video textures (fire, HomePod screen) don't pause each other. Set once.
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        } catch {
+            print("UP_AR audio session config failed: \(error.localizedDescription)")
+        }
     }
 
     func attach(to arView: ARView) {
@@ -95,6 +114,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         isSessionRunning = false
         displayLink?.invalidate()
         displayLink = nil
+        teardownMusic()
     }
 
     // MARK: - Tap handling
@@ -107,9 +127,23 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             if recognizer.state == .ended { confirmCalibration() }
         case .placed:
             switch recognizer.state {
-            case .began, .changed: updateTeleportPreview(at: point)
-            case .ended:           commitTeleport()
-            case .cancelled, .failed: removeTeleportPreview()
+            case .began:
+                // A press that starts on the HomePod opens its music panel on release instead of
+                // teleporting; anything else drives the teleport target as before.
+                pressOnHomepod = homepodHit(at: point)
+                if !pressOnHomepod { updateTeleportPreview(at: point) }
+            case .changed:
+                if !pressOnHomepod { updateTeleportPreview(at: point) }
+            case .ended:
+                if pressOnHomepod {
+                    if appModel.musicAvailable { appModel.openMusicPanel() }
+                    pressOnHomepod = false
+                } else {
+                    commitTeleport()
+                }
+            case .cancelled, .failed:
+                pressOnHomepod = false
+                removeTeleportPreview()
             default: break
             }
         case .start, .loading:
@@ -174,6 +208,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.heightNudge = 0
         appModel.floorDetected = false
         latestCalibrationFloorTransform = nil
+
+        // Build the HomePod music player from the placed content (if the scene has one). Done before the
+        // reveal so the HUD's music affordance is ready the moment the scene appears.
+        setupMusic(in: content)
 
         // Keep the loading screen up until the scene has actually rendered a few frames — this covers the
         // GPU texture-upload hitch on first display, so the reveal is clean rather than a stutter.
@@ -299,6 +337,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             arView.scene.removeAnchor(old.originAnchor)
         }
         hierarchy = nil
+        teardownMusic()
         appModel.phase = .calibrating
         beginCalibration()
     }
@@ -307,6 +346,163 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         hierarchy?.nudgeHeight(delta)
         appModel.heightNudge += delta
         appModel.eyeHeight -= delta   // raising the scene lowers the apparent eye height
+    }
+
+    func musicTogglePlayPause() {
+        musicController?.togglePlayPause()
+        syncMusicState()
+    }
+
+    func musicNext() {
+        musicController?.next()
+        syncMusicState()
+    }
+
+    func musicPrevious() {
+        musicController?.previous()
+        syncMusicState()
+    }
+
+    func musicSetVolume(_ volume: Float) {
+        musicController?.setVolume(volume)
+    }
+
+    func musicSeek(to seconds: TimeInterval) {
+        musicController?.seek(to: seconds)
+    }
+
+    func musicSetShuffle(_ enabled: Bool) {
+        musicController?.setShuffle(enabled)
+        syncMusicState()
+    }
+
+    // MARK: - Music
+
+    /// Build the HomePod player from the placed content: find the named `MusicEmitter` (placed by
+    /// `HomepodProcessor`), read its tuning, and scan the bundled tracks. Inert when the scene has no
+    /// HomePod or no tracks are bundled. Playback is manual — the user starts it from the panel.
+    private func setupMusic(in content: Entity) {
+        teardownMusic()
+        guard let emitter = content.findEntity(named: "MusicEmitter"),
+              let config = emitter.components[MusicEmitterComponent.self] else { return }
+
+        let tracks = LevelResourceLocator().audioTrackURLs()
+        guard !tracks.isEmpty else {
+            TimingDiagnostics.log("homepod present but no bundled tracks in Content/Audio — music off")
+            return
+        }
+
+        homepodEntity = homepodRoot(of: emitter)
+        let controller = SpatialMusicController(
+            emitter: emitter,
+            tracks: tracks,
+            shuffle: config.shuffle,
+            volume: config.defaultVolume,
+            gainBoost: Audio.Decibel(config.gainBoostDB),
+            reverb: musicReverb(preset: config.reverbPreset, levelDB: config.reverbLevelDB)
+        )
+        musicController = controller
+        appModel.musicAvailable = true
+        // Warm the first track + audio engine now, behind the loading screen, so hitting play later is
+        // instant instead of hitching the live experience.
+        controller.prewarm()
+        syncMusicState()
+        MemoryDiagnostics.log("music ready (\(tracks.count) tracks)")
+    }
+
+    private func teardownMusic() {
+        musicController?.stop()
+        musicController = nil
+        homepodEntity = nil
+        pressOnHomepod = false
+        appModel.musicAvailable = false
+        appModel.musicIsPlaying = false
+        appModel.musicTitle = nil
+        appModel.musicArtist = nil
+        appModel.musicArtworkData = nil
+        appModel.musicDuration = 0
+        appModel.musicPosition = 0
+        appModel.showMusicPanel = false
+    }
+
+    /// Mirror the controller's published state onto AppModel for the now-playing card. Called after each
+    /// control action and (with the playback position) periodically while the panel is open.
+    private func syncMusicState() {
+        guard let music = musicController else { return }
+        appModel.musicIsPlaying = music.isPlaying
+        appModel.musicTitle = music.currentTrackTitle
+        appModel.musicArtist = music.currentTrackArtist
+        appModel.musicArtworkData = music.currentArtworkData
+        appModel.musicDuration = music.currentTrackDuration
+        appModel.musicVolume = music.volume
+        appModel.musicShuffle = music.isShuffleEnabled
+    }
+
+    private func updateMusicReadout() {
+        guard let music = musicController else { return }
+        let now = CACurrentMediaTime()
+        guard now - lastMusicReadout >= 0.25 else { return }
+        lastMusicReadout = now
+        appModel.musicPosition = music.currentPlaybackPosition
+        syncMusicState()
+    }
+
+    /// Map a manifest reverb-preset name to a controller config, or nil to disable. A small subset is
+    /// supported on purpose — the HomePod sits in a room, so the room-ish presets are what's useful.
+    private func musicReverb(preset: String?, levelDB: Float) -> SpatialMusicController.ReverbConfiguration? {
+        guard let name = preset?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !name.isEmpty, name != "none" else { return nil }
+        let resolved: Reverb.Preset
+        switch name {
+        case "outside": resolved = .outside
+        case "concerthall": resolved = .concertHall
+        case "verylargeroom": resolved = .veryLargeRoom
+        case "largeroom": resolved = .largeRoom
+        case "mediumroom": resolved = .mediumRoomDry
+        case "smallroom": resolved = .smallRoom
+        default: resolved = .mediumRoomDry
+        }
+        return SpatialMusicController.ReverbConfiguration(preset: resolved, level: Audio.Decibel(levelDB))
+    }
+
+    /// Walk up from the emitter to the tagged HomePod layer root (for the tap-to-open gesture).
+    private func homepodRoot(of entity: Entity) -> Entity? {
+        var node: Entity? = entity
+        while let current = node {
+            if current.components.has(HomepodComponent.self) { return current }
+            node = current.parent
+        }
+        return nil
+    }
+
+    /// True when the screen ray through `point` hits the HomePod's world bounding box. Uses the box
+    /// (not a collider) so it never interferes with the floor raycast that teleport relies on.
+    private func homepodHit(at point: CGPoint) -> Bool {
+        guard appModel.musicAvailable, let arView, let homepod = homepodEntity else { return false }
+        guard let ray = arView.ray(through: point) else { return false }
+        let bounds = homepod.visualBounds(relativeTo: nil)
+        return rayIntersectsBox(origin: ray.origin, direction: ray.direction, min: bounds.min, max: bounds.max)
+    }
+
+    private func rayIntersectsBox(origin: SIMD3<Float>, direction: SIMD3<Float>,
+                                 min boxMin: SIMD3<Float>, max boxMax: SIMD3<Float>) -> Bool {
+        var tMin: Float = 0
+        var tMax: Float = .greatestFiniteMagnitude
+        for axis in 0..<3 {
+            let o = origin[axis], d = direction[axis]
+            if abs(d) < 1e-6 {
+                if o < boxMin[axis] || o > boxMax[axis] { return false }
+            } else {
+                let inv = 1 / d
+                var t1 = (boxMin[axis] - o) * inv
+                var t2 = (boxMax[axis] - o) * inv
+                if t1 > t2 { swap(&t1, &t2) }
+                tMin = Swift.max(tMin, t1)
+                tMax = Swift.min(tMax, t2)
+                if tMin > tMax { return false }
+            }
+        }
+        return true
     }
 
     // MARK: - ARSessionDelegate (debug read-outs)
@@ -372,6 +568,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     @objc private func tick(_ link: CADisplayLink) {
         defer { lastFrameTimestamp = link.timestamp }
         updateCalibrationReadout()
+        if appModel.showMusicPanel { updateMusicReadout() }
         guard appModel.showDebugOverlay, lastFrameTimestamp != 0 else { return }
         let dt = link.timestamp - lastFrameTimestamp
         if dt > 0 { appModel.fps = 1.0 / dt }

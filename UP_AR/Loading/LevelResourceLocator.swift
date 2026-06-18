@@ -17,7 +17,11 @@ struct LevelResourceLocator {
     let subdirectories: [String]
     private let bundle: Bundle
 
-    init(subdirectories: [String] = ["Shared", "Floor", "Terrace", "ProbesTextures", "Videos"], bundle: Bundle = .main) {
+    /// Music files live here; scanned in bulk (the playlist isn't listed in the manifest).
+    static let audioSubdirectory = "Audio"
+    private static let audioExtensions = ["mp3", "m4a", "aac", "wav", "caf", "aiff"]
+
+    init(subdirectories: [String] = ["Shared", "Floor", "Terrace", "ProbesTextures", "Videos", "Audio"], bundle: Bundle = .main) {
         self.subdirectories = subdirectories
         self.bundle = bundle
     }
@@ -43,6 +47,17 @@ struct LevelResourceLocator {
     }
 
     func loadManifest(named name: String) throws -> LevelManifest { try decode(name) }
+
+    /// Every bundled music track (sorted by name), scanned from the `Audio` content folder. The
+    /// playlist is intentionally not listed in the manifest — drop files in and they play.
+    func audioTrackURLs() -> [URL] {
+        let urls = Self.audioExtensions.flatMap { ext in
+            bundle.urls(forResourcesWithExtension: ext, subdirectory: Self.audioSubdirectory) ?? []
+        }
+        return urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+    }
 
     private func decode<T: Decodable>(_ name: String) throws -> T {
         guard let url = lookup(base: name, ext: "json") else {

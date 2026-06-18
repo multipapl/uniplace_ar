@@ -17,6 +17,15 @@ protocol ARExperienceActions: AnyObject {
     func recenter()
     func recalibrate()
     func nudgeHeight(_ delta: Float)
+
+    // Spatial-music controls — they need the live scene's emitter, so they live behind this delegate
+    // just like the calibration/teleport intents. The controller's state is mirrored back onto AppModel.
+    func musicTogglePlayPause()
+    func musicNext()
+    func musicPrevious()
+    func musicSetVolume(_ volume: Float)
+    func musicSeek(to seconds: TimeInterval)
+    func musicSetShuffle(_ enabled: Bool)
 }
 
 @MainActor
@@ -52,6 +61,19 @@ final class AppModel {
     var fps: Double = 0
     var trackingStateLabel = "—"
     var poseLabel = "—"
+
+    // Music (the in-scene HomePod player). Presentation state mirrored from the controller by the AR
+    // session; controls are expressed as intent through `actions`. AppModel holds no audio/RealityKit.
+    var musicAvailable = false
+    var musicIsPlaying = false
+    var musicTitle: String?
+    var musicArtist: String?
+    var musicArtworkData: Data?
+    var musicDuration: TimeInterval = 0
+    var musicPosition: TimeInterval = 0
+    var musicVolume: Float = 0.6
+    var musicShuffle = false
+    var showMusicPanel = false
 
     /// Delegate to the live AR experience. Weak to avoid a retain cycle with the controller.
     @ObservationIgnored weak var actions: ARExperienceActions?
@@ -110,5 +132,29 @@ final class AppModel {
 
     func nudgeHeight(_ delta: Float) {
         actions?.nudgeHeight(delta)
+    }
+
+    // MARK: Music intents (forwarded to the live controller via `actions`)
+
+    func openMusicPanel() { showMusicPanel = true }
+    func closeMusicPanel() { showMusicPanel = false }
+
+    func musicTogglePlayPause() { actions?.musicTogglePlayPause() }
+    func musicNext() { actions?.musicNext() }
+    func musicPrevious() { actions?.musicPrevious() }
+
+    func setMusicVolume(_ value: Float) {
+        musicVolume = min(max(value, 0), 1)
+        actions?.musicSetVolume(musicVolume)
+    }
+
+    func seekMusic(to seconds: TimeInterval) {
+        musicPosition = seconds
+        actions?.musicSeek(to: seconds)
+    }
+
+    func setMusicShuffle(_ enabled: Bool) {
+        musicShuffle = enabled
+        actions?.musicSetShuffle(enabled)
     }
 }
