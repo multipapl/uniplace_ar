@@ -19,7 +19,12 @@ protocol ARExperienceActions: AnyObject {
     func recenter()
     func recalibrate()
     func nudgeHeight(_ delta: Float)
+    func setRenderScale(_ scale: Double)
     func snapTurn(_ degrees: Float)
+
+    /// Duck/restore spatial ambience around app backgrounding so the audio engine isn't interrupted
+    /// mid-waveform (which crackles). Music keeps playing in the background, so it's untouched.
+    func setAudioBackgrounded(_ backgrounded: Bool)
 
     // Spatial-music controls — they need the live scene's emitter, so they live behind this delegate
     // just like the calibration/teleport intents. The controller's state is mirrored back onto AppModel.
@@ -35,6 +40,11 @@ protocol ARExperienceActions: AnyObject {
 @MainActor
 @Observable
 final class AppModel {
+    static let minRenderScale = 0.70
+    static let maxRenderScale = 1.00
+    private static let renderScaleDefaultsKey = "UP_AR.renderScale"
+    private static let audioVolumeDefaultsPrefix = "UP_AR.audioVolume."
+
     /// One selectable scene shown on the start menu, sourced from the manifest (data-driven — no
     /// hardcoded scene names in the UI).
     struct SceneOption: Identifiable, Equatable {
@@ -72,11 +82,13 @@ final class AppModel {
     var showGallery = false
     var showSettings = false
     var showLocomotionPanel = false
+    var showHelpPanel = false
 
     // Debug read-outs (written by the session delegate / display link, gated behind the overlay).
     var fps: Double = 0
     var trackingStateLabel = "—"
     var poseLabel = "—"
+    var renderScale: Double = AppModel.loadRenderScale()
 
     // Music (the in-scene HomePod player). Presentation state mirrored from the controller by the AR
     // session; controls are expressed as intent through `actions`. AppModel holds no audio/RealityKit.
@@ -139,6 +151,7 @@ final class AppModel {
         showMenu = false
         showMusicPanel = false
         showLocomotionPanel = false
+        showHelpPanel = false
         lastMessage = "Loading"
         if phase == .placed || phase == .loading {
             phase = .loading
@@ -167,6 +180,7 @@ final class AppModel {
         showGallery = false
         showSettings = false
         showLocomotionPanel = false
+        showHelpPanel = false
         showDebugOverlay = false
         floorDetected = false
         calibrationTitle = "Looking for the floor"
@@ -187,11 +201,26 @@ final class AppModel {
     func recalibrate() {
         showMenu = false
         showLocomotionPanel = false
+        showHelpPanel = false
         actions?.recalibrate()
     }
 
     func nudgeHeight(_ delta: Float) {
         actions?.nudgeHeight(delta)
+    }
+
+    func setRenderScale(_ value: Double) {
+        renderScale = Self.clampRenderScale(value)
+        UserDefaults.standard.set(renderScale, forKey: Self.renderScaleDefaultsKey)
+        actions?.setRenderScale(renderScale)
+    }
+
+    func resetRenderScale() {
+        setRenderScale(Self.maxRenderScale)
+    }
+
+    func setAudioBackgrounded(_ backgrounded: Bool) {
+        actions?.setAudioBackgrounded(backgrounded)
     }
 
     func snapTurnLeft() {
@@ -214,7 +243,8 @@ final class AppModel {
     func musicPrevious() { actions?.musicPrevious() }
 
     func setMusicVolume(_ value: Float) {
-        musicVolume = min(max(value, 0), 1)
+        musicVolume = Self.clampUnit(value)
+        saveAudioChannelVolume(id: "music", volume: musicVolume)
         updateAudioChannelVolume(id: "music", volume: musicVolume)
         actions?.musicSetVolume(musicVolume)
     }
@@ -230,7 +260,8 @@ final class AppModel {
     }
 
     func setAudioChannelVolume(id: String, _ value: Float) {
-        let clamped = min(max(value, 0), 1)
+        let clamped = Self.clampUnit(value)
+        saveAudioChannelVolume(id: id, volume: clamped)
         updateAudioChannelVolume(id: id, volume: clamped)
         if id == "music" {
             musicVolume = clamped
@@ -240,6 +271,37 @@ final class AppModel {
 
     func updateAudioChannelVolume(id: String, volume: Float) {
         guard let index = audioChannels.firstIndex(where: { $0.id == id }) else { return }
-        audioChannels[index].volume = min(max(volume, 0), 1)
+        audioChannels[index].volume = Self.clampUnit(volume)
+    }
+
+    func savedAudioChannelVolume(id: String, default defaultValue: Float) -> Float {
+        let key = Self.audioVolumeDefaultsKey(id: id)
+        guard UserDefaults.standard.object(forKey: key) != nil else {
+            return Self.clampUnit(defaultValue)
+        }
+        return Self.clampUnit(Float(UserDefaults.standard.double(forKey: key)))
+    }
+
+    private static func loadRenderScale() -> Double {
+        guard UserDefaults.standard.object(forKey: renderScaleDefaultsKey) != nil else {
+            return maxRenderScale
+        }
+        return clampRenderScale(UserDefaults.standard.double(forKey: renderScaleDefaultsKey))
+    }
+
+    private static func clampRenderScale(_ value: Double) -> Double {
+        min(max(value, minRenderScale), maxRenderScale)
+    }
+
+    private func saveAudioChannelVolume(id: String, volume: Float) {
+        UserDefaults.standard.set(Double(Self.clampUnit(volume)), forKey: Self.audioVolumeDefaultsKey(id: id))
+    }
+
+    private static func audioVolumeDefaultsKey(id: String) -> String {
+        audioVolumeDefaultsPrefix + id
+    }
+
+    private static func clampUnit(_ value: Float) -> Float {
+        min(max(value, 0), 1)
     }
 }

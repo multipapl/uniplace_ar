@@ -6,8 +6,9 @@
     {
       "id": "floor",
       "title": "7th Floor",
-      "spawn": { "entity": "LO_StartPosition" },
+      "spawn": { "entity": "LO_StartPosition", "yawDegrees": -90 },
       "musicVolume": 1.0,
+      "skyboxHeightOffset": 0.0,
       "layers": [
         { "file": "LO_Scene.usdz",       "type": "unlit" },
         { "file": "LO_Probes.usdz",      "type": "probes" },
@@ -17,6 +18,7 @@
         { "file": "LO_Glass.usdz",       "type": "glass" },
         { "file": "LO_Emission.usdz",    "type": "emission" },
         { "file": "LO_Fire.usdz",        "type": "fire" },
+        { "file": "LO_Clocks.usdz",      "type": "clock" },
         { "file": "LO_Homepod.usdz",     "type": "homepod" },
         { "file": "LO_Navmesh.usdz",     "type": "navmesh" }
       ]
@@ -24,11 +26,15 @@
     {
       "id": "terrace",
       "title": "Terrace",
-      "spawn": { "entity": "TR_StartPosition" },
+      "spawn": { "entity": "TR_StartPosition", "yawDegrees": 90 },
       "musicVolume": 0.02,
+      "skyboxHeightOffset": 3.5,
       "layers": [
         { "file": "TR_Scene.usdz",       "type": "unlit" },
         { "file": "TR_Translusent.usdz", "type": "translucent" },
+        { "file": "TR_Probes.usdz",      "type": "probes" },
+        { "file": "TR_Glass.usdz",       "type": "glass" },
+        { "file": "TR_Water.usdz",       "type": "water" },
         { "file": "LO_Homepod.usdz",     "type": "homepod" },
         { "file": "TR_Navmesh.usdz",     "type": "navmesh" }
       ]
@@ -36,9 +42,9 @@
   ],
   "ambient": {
     "sources": [
-      { "namePrefix": "SFX_AmbientStreet", "file": "SFX_AmbientStreet.mp3", "volume": 0.09, "attenuationRadius": 1.3, "floor": "any" },
-      { "namePrefix": "SFX_Fireplace",     "file": "SFX_Fireplace.mp3",     "volume": 0.7,  "attenuationRadius": 4.0, "floor": "ground" },
-      { "namePrefix": "SFX_Water",         "file": "SFX_Water.mp3",         "volume": 0.6,  "attenuationRadius": 4.0, "floor": "terrace" }
+      { "namePrefix": "SFX_AmbientStreet", "file": "SFX_AmbientStreet.mp3", "volume": 0.1, "attenuationRadius": 2.0, "floor": "any" },
+      { "namePrefix": "SFX_Fireplace",     "file": "SFX_Fireplace.mp3",     "volume": 0.3,  "attenuationRadius": 3.0, "floor": "ground" },
+      { "namePrefix": "SFX_Water",         "file": "SFX_Water.mp3",         "volume": 0.3,  "attenuationRadius": 2.0, "floor": "terrace" }
     ],
     "rooftopFile": "SFX_Rooftop.mp3",
     "rooftopVolume": 0.6,
@@ -50,6 +56,13 @@
     "navmesh": { "debugVisible": false },
     "emission": { "emissionBrightness": 2.0, "emissionTint": [1.0, 1.0, 1.0] },
     "fire": { "fireVideo": "Fire_Alpha_Runtime.mov" },
+    "clock": {
+      "clockUVIndex": 1,
+      "clockUVRect": [0.26, 0.035, 0.5, 0.095],
+      "clockTint": [0.95, 0.22, 0.12],
+      "clockFlipU": true,
+      "clockFlipV": true
+    },
     "probes": { "reflectionIntensityExponent": 1.4 },
     "reflect": { "reflectMaterialPacking": "auto", "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 },
     "translucent": { "translucentBaseColorUVIndex": 1, "translucentAlphaUVIndex": 0, "translucentAlphaCutoff": 0.5 },

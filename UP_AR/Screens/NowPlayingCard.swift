@@ -10,6 +10,7 @@ import SwiftUI
 struct NowPlayingCard: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
+    var compact = false
     var closeAction: (() -> Void)?
 
     @State private var selectedTab: AudioTab = .player
@@ -23,7 +24,7 @@ struct NowPlayingCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: compact ? 10 : 16) {
             ChromeSheetHeader(title: "Audio", subtitle: "HomePod") {
                 if let closeAction {
                     closeAction()
@@ -44,12 +45,12 @@ struct NowPlayingCard: View {
             }
             .scrollIndicators(.hidden)
         }
-        .padding(22)
+        .padding(compact ? 14 : 22)
         .presentationDragIndicator(.visible)
     }
 
     private var player: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: compact ? 12 : 18) {
             artwork
             trackLabels
             scrubber
@@ -71,12 +72,12 @@ struct NowPlayingCard: View {
                                    startPoint: .topLeading,
                                    endPoint: .bottomTrailing)
                     Image(systemName: "music.note")
-                        .font(.system(size: 48, weight: .semibold))
+                        .font(.system(size: compact ? 36 : 48, weight: .semibold))
                         .foregroundStyle(.black.opacity(0.42))
                 }
             }
         }
-        .frame(width: 184, height: 184)
+        .frame(width: compact ? 122 : 184, height: compact ? 122 : 184)
         .clipShape(RoundedRectangle(cornerRadius: AppChrome.panelRadius))
         .overlay(alignment: .bottomLeading) {
             HStack(spacing: 6) {
@@ -97,10 +98,10 @@ struct NowPlayingCard: View {
     private var trackLabels: some View {
         VStack(spacing: 5) {
             Text(appModel.musicTitle ?? "Not Playing")
-                .font(.system(size: 21, weight: .semibold))
+                .font(.system(size: compact ? 18 : 21, weight: .semibold))
                 .lineLimit(1)
             Text(appModel.musicArtist ?? "HomePod")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: compact ? 13 : 14, weight: .medium))
                 .foregroundStyle(.black.opacity(0.56))
                 .lineLimit(1)
         }
@@ -137,23 +138,23 @@ struct NowPlayingCard: View {
     }
 
     private var transport: some View {
-        HStack(spacing: 16) {
-            TransportButton(systemName: "backward.fill", size: 46) {
+        HStack(spacing: compact ? 12 : 16) {
+            TransportButton(systemName: "backward.fill", size: compact ? 42 : 46) {
                 appModel.musicPrevious()
             }
-            TransportButton(systemName: appModel.musicIsPlaying ? "pause.fill" : "play.fill", size: 66, isPrimary: true) {
+            TransportButton(systemName: appModel.musicIsPlaying ? "pause.fill" : "play.fill", size: compact ? 58 : 66, isPrimary: true) {
                 appModel.musicTogglePlayPause()
             }
-            TransportButton(systemName: "forward.fill", size: 46) {
+            TransportButton(systemName: "forward.fill", size: compact ? 42 : 46) {
                 appModel.musicNext()
             }
         }
     }
 
     private var volumeControls: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: compact ? 8 : 10) {
             ChromeSectionLabel(title: "Volume", value: "\(Int((appModel.musicVolume * 100).rounded()))")
-            HStack(spacing: 12) {
+            HStack(spacing: compact ? 10 : 12) {
                 Button {
                     appModel.setMusicShuffle(!appModel.musicShuffle)
                 } label: {
@@ -176,13 +177,13 @@ struct NowPlayingCard: View {
                 Image(systemName: "speaker.wave.3.fill").foregroundStyle(.black.opacity(0.42))
             }
             .font(.title3)
-            .padding(12)
+            .padding(compact ? 10 : 12)
             .background(AppChrome.controlFill, in: RoundedRectangle(cornerRadius: AppChrome.controlRadius))
         }
     }
 
     private var mixer: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: compact ? 10 : 14) {
             ChromeSectionLabel(title: "Scene mixer")
             if appModel.audioChannels.isEmpty {
                 ChromeEmptyState(

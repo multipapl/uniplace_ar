@@ -14,6 +14,7 @@
 
 import RealityKit
 import SwiftUI
+import UIKit
 
 struct ARViewContainer: UIViewControllerRepresentable {
     @Environment(AppModel.self) private var appModel
@@ -25,12 +26,15 @@ struct ARViewContainer: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> ARViewController {
         TimingDiagnostics.log("ARView makeUIViewController begin")
         let controller = ARViewController()
+        controller.applyRenderScale(appModel.renderScale)
         context.coordinator.attach(to: controller.arView)
         TimingDiagnostics.log("ARView attached")
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: ARViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: ARViewController, context: Context) {
+        uiViewController.applyRenderScale(appModel.renderScale)
+    }
 
     static func dismantleUIViewController(_ uiViewController: ARViewController,
                                           coordinator: ARSessionController) {
@@ -44,10 +48,21 @@ final class ARViewController: UIViewController {
     let arView = ARView(frame: .zero,
                         cameraMode: .ar,
                         automaticallyConfigureSession: false)
+    private var appliedRenderScale: Double?
 
     override func loadView() {
         TimingDiagnostics.log("ARView created")
         view = arView
+    }
+
+    func applyRenderScale(_ renderScale: Double) {
+        let clamped = min(max(renderScale, AppModel.minRenderScale), AppModel.maxRenderScale)
+        guard appliedRenderScale != clamped else { return }
+
+        let screenScale = view.window?.screen.scale ?? UIScreen.main.scale
+        arView.contentScaleFactor = screenScale * clamped
+        appliedRenderScale = clamped
+        TimingDiagnostics.log(String(format: "render scale %.2f", clamped))
     }
 
     override func viewWillTransition(to size: CGSize,
