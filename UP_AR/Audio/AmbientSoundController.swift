@@ -93,6 +93,24 @@ final class AmbientSoundController {
         rooftopEntity = nil
     }
 
+    /// Pause every ambient loop ahead of app backgrounding. The app has no background-audio mode, so
+    /// the system freezes the audio engine almost immediately on resign — a timed fade can't render in
+    /// that window. `pause()` is applied synchronously (with RealityKit's own declick), so the engine
+    /// freezes on already-stopped nodes instead of cutting a loop mid-waveform — which is what pops/
+    /// crackles (most audibly on the rooftop `AmbientAudioComponent` bed on the terrace). Rooftop goes
+    /// first, as the loudest offender.
+    func suspend() {
+        rooftopController?.pause()
+        pointControllers.forEach { $0.pause() }
+    }
+
+    /// Resume the ambient loops when returning to the foreground.
+    func resume() {
+        guard started else { return }
+        rooftopController?.play()
+        pointControllers.forEach { $0.play() }
+    }
+
     func setChannelVolume(_ channelID: String, _ volume: Float) {
         let clamped = Self.clampUnit(volume)
         channelVolumes[channelID] = clamped

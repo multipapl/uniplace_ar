@@ -10,6 +10,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -37,9 +38,20 @@ struct RootView: View {
                     LoadingView()
                 }
             }
+
+            if appModel.showGallery {
+                FullscreenGalleryView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .onAppear {
             appModel.loadSceneCatalog()
+        }
+        // Duck spatial ambience the moment we leave the active state (before the engine is frozen on
+        // background), so it ramps to silence instead of being cut mid-waveform and crackling.
+        .onChange(of: scenePhase) { _, phase in
+            appModel.setAudioBackgrounded(phase != .active)
         }
     }
 }
