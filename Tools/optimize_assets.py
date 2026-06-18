@@ -71,8 +71,10 @@ ALL_FOLDERS = sorted(set(SCENE_PREFIXES.values()) | {SHARED_FOLDER})
 
 PLATFORM = "iphoneos"            # realitytool platform for on-device iOS builds
 DEPLOYMENT_TARGET = "18.0"
-MAX_TEXTURE_SIZE = None           # None = compile at source resolution (prep textures by hand).
-                                  # Set a cap (e.g. via --max-size 2048) for an optional global downscale.
+MAX_TEXTURE_SIZE = 2048           # Default global texture cap (longest edge) — the real AR memory lever,
+                                  # so the double-clickable optimize.command downscales without any flags.
+                                  # Override with --max-size N, or --max-size 0 to compile at source res.
+                                  # Skybox is exempt (stays 8k) and probes are forced to PROBE_MAX_SIZE.
 PROBE_MAX_SIZE = 512              # Probe env maps are downscaled harder than everything else: they feed
                                   # IBL cubemaps (heavy in VRAM) and 512 equirect is plenty for reflections.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
@@ -280,7 +282,8 @@ def main():
     ap.add_argument("--only", metavar="LAYER", help="process a single layer by stem, e.g. LO_Scene")
     ap.add_argument("--scene", choices=ALL_FOLDERS, help="process only one destination scene")
     ap.add_argument("--max-size", type=int, default=MAX_TEXTURE_SIZE,
-                    help="optional: downscale texture longest edge to this many px (default: source res)")
+                    help="downscale texture longest edge to this many px (default: %d; 0 = source res)"
+                         % MAX_TEXTURE_SIZE)
     args = ap.parse_args()
 
     MAX_TEXTURE_SIZE = args.max_size
