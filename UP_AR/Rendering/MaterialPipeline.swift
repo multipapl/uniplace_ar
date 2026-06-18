@@ -20,7 +20,15 @@ final class MaterialPipeline {
     static func standard() -> MaterialPipeline {
         MaterialPipeline(processors: [
             "unlit": UnlitProcessor(),
-            "navmesh": NavmeshProcessor()
+            "navmesh": NavmeshProcessor(),
+            "skybox": SkyboxProcessor(),
+            "emission": EmissionProcessor(),
+            "translucent": TranslucentProcessor(),
+            "curtains": CurtainsProcessor(),
+            "probes": ProbesProcessor(),
+            "reflect": ReflectProcessor(),
+            "glass": GlassProcessor(),
+            "water": WaterProcessor()
         ])
     }
 

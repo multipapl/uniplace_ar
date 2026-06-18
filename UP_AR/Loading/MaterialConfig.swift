@@ -12,9 +12,43 @@ import Foundation
 
 struct MaterialConfig: Decodable {
     /// Union of every knob across all types; each processor reads only the fields it cares about.
-    /// New knobs (glassOpacity, tint, …) are added here as new optional fields.
+    /// New knobs are added here as new optional fields, so old configs keep decoding.
     struct Params: Decodable {
+        // navmesh
         var debugVisible: Bool?
+
+        // skybox
+        var skyBrightness: Float?
+        var skyTint: [Float]?
+        var skyOpacity: Float?
+
+        // translucent
+        var translucentAlphaCutoff: Float?
+        var translucentAlphaFromOpacity: Bool?
+        var translucentBaseColorUVIndex: Int?
+        var translucentAlphaUVIndex: Int?
+
+        // curtains
+        var curtainOpacity: Float?
+        var curtainTint: [Float]?
+        var curtainBrightness: Float?
+
+        // glass
+        var glassOpacity: Float?
+        var glassRoughness: Float?
+        var glassSpecular: Float?
+        var glassClearcoat: Float?
+        var glassClearcoatRoughness: Float?
+
+        // reflect
+        var reflectBaseColorUVIndex: Int?
+        var reflectMaterialUVIndex: Int?
+        var reflectMaterialPacking: String?
+
+        // shared reflection environment (read by glass/reflect/water — first to ask wins)
+        var reflectionEnvironment: String?
+        var reflectionEnvironmentName: String?
+        var reflectionIntensityExponent: Float?
     }
 
     private let byType: [String: Params]
