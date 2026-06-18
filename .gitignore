@@ -42,6 +42,11 @@ UP_AR/Content/Levels/
 UP_AR/Content/Gallery/
 UP_AR/Content/Audio/
 UP_AR/Content/SFX/
+# Optimizer output (generated from the Resilio sync): compiled scene folders + extracted probe maps.
+UP_AR/Content/Floor/
+UP_AR/Content/Terrace/
+UP_AR/Content/Shared/
+UP_AR/Content/ProbesTextures/
 
 # RealityKit / USD scene payloads
 *.usdz
