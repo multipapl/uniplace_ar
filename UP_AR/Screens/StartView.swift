@@ -25,16 +25,26 @@ struct StartView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 }
                 Spacer()
-                Button {
-                    appModel.openVirtualCamera()
-                } label: {
-                    Label("Open Virtual Camera", systemImage: "arkit")
-                        .font(.headline)
-                        .padding(.vertical, 16)
-                        .padding(.horizontal, 28)
-                        .frame(maxWidth: 420)
-                        .background(.white, in: .capsule)
-                        .foregroundStyle(.black)
+                VStack(spacing: 14) {
+                    if appModel.scenes.isEmpty {
+                        Text("No scenes available")
+                            .font(.headline)
+                            .foregroundStyle(.white.opacity(0.7))
+                    } else {
+                        ForEach(appModel.scenes) { scene in
+                            Button {
+                                appModel.selectScene(scene.id)
+                            } label: {
+                                Label(scene.title, systemImage: "arkit")
+                                    .font(.headline)
+                                    .padding(.vertical, 16)
+                                    .padding(.horizontal, 28)
+                                    .frame(maxWidth: 420)
+                                    .background(.white, in: .capsule)
+                                    .foregroundStyle(.black)
+                            }
+                        }
+                    }
                 }
                 .padding(.bottom, 60)
             }

@@ -8,6 +8,7 @@
 
 import RealityKit
 import ARKit
+import Combine
 import QuartzCore
 import UIKit
 
@@ -27,8 +28,15 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var isSessionRunning = false
     private var didLogFirstFrame = false
     private var didLogFirstFloorDetection = false
-    private let levelProvider: LevelProvider =
-        ManifestLevelProvider(fallback: PlaceholderLevelProvider())
+    /// The scene to load comes from the menu selection in AppModel — no hardcoded id here.
+    private var levelProvider: LevelProvider {
+        ManifestLevelProvider(sceneId: appModel.selectedSceneId, fallback: PlaceholderLevelProvider())
+    }
+
+    /// The scene is loaded in the background during calibration (prefetch), so confirming the floor
+    /// places an already-ready scene instead of freezing while it loads.
+    private var prefetchTask: Task<Entity, Error>?
+    private var prefetchedSceneId: String?
 
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
@@ -55,7 +63,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             startSession(resetTracking: true)
         case .calibrating:
             beginCalibration()
-        case .placed:
+        case .loading, .placed:
             PortalEnvironment.showPortalBackground(arView)
             startSession(resetTracking: true)
         }
@@ -92,6 +100,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         isSessionRunning = false
         displayLink?.invalidate()
         displayLink = nil
+        cancelPrefetch()   // free any scene loaded for calibration if we're tearing the AR view down
     }
 
     // MARK: - Tap handling
@@ -109,7 +118,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             case .cancelled, .failed: removeTeleportPreview()
             default: break
             }
-        case .start:
+        case .start, .loading:
             break
         }
     }
@@ -136,7 +145,12 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             return
         }
 
+        // Floor confirmed → switch to the loading screen and hide the passthrough feed. The scene is
+        // revealed only once it is fully loaded AND has rendered (see placeScene) — no half-built pop-in.
         isPlacingScene = true
+        appModel.phase = .loading
+        removeCalibrationPreview()
+        PortalEnvironment.showPortalBackground(arView)
         Task { await placeScene(floorTransform: floorTransform, eyeHeight: eyeHeight) }
     }
 
@@ -144,20 +158,19 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         guard let arView else { return }
         defer { isPlacingScene = false }
 
+        // Consume the prefetch started at calibration; if it never ran, load now.
         let content: Entity
         do {
-            content = try await levelProvider.makeContent()
+            content = try await (prefetchTask ?? Task { try await levelProvider.makeContent() }).value
         } catch {
             appModel.lastMessage = "Failed to load scene: \(error.localizedDescription)"
+            appModel.phase = .calibrating
             return
         }
 
         if let old = hierarchy {
             arView.scene.removeAnchor(old.originAnchor)
         }
-        removeCalibrationPreview()
-        // Hide the passthrough feed: the placed scene is a portal into a virtual room, not classic AR.
-        PortalEnvironment.showPortalBackground(arView)
         let newHierarchy = SceneHierarchy(floorTransform: floorTransform, content: content)
         arView.scene.addAnchor(newHierarchy.originAnchor)
         hierarchy = newHierarchy
@@ -166,9 +179,50 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.heightNudge = 0
         appModel.floorDetected = false
         latestCalibrationFloorTransform = nil
+
+        // Keep the loading screen up until the scene has actually rendered a few frames — this covers the
+        // GPU texture-upload hitch on first display, so the reveal is clean rather than a stutter.
+        await waitForSceneToRender(arView)
+
+        prefetchTask = nil
+        prefetchedSceneId = nil
         appModel.phase = .placed
         appModel.lastMessage = "Walk, tap to teleport, or recenter"
         MemoryDiagnostics.log("scene placed")
+    }
+
+    /// Start loading the selected scene in the background (during calibration) unless it is already
+    /// loading/loaded. Idempotent across calibration restarts for the same scene.
+    private func beginPrefetch() {
+        let sceneId = appModel.selectedSceneId
+        if prefetchedSceneId == sceneId, prefetchTask != nil { return }
+        prefetchTask?.cancel()
+        prefetchedSceneId = sceneId
+        let provider = levelProvider
+        MemoryDiagnostics.log("prefetch begin (\(sceneId))")
+        prefetchTask = Task { try await provider.makeContent() }
+    }
+
+    private func cancelPrefetch() {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedSceneId = nil
+    }
+
+    /// Suspend until the scene has rendered `frames` updates, so the reveal lands after the first
+    /// (hitchy) GPU upload rather than on top of it.
+    private func waitForSceneToRender(_ arView: ARView, frames: Int = 3) async {
+        await withCheckedContinuation { continuation in
+            var remaining = frames
+            var subscription: (any Cancellable)?
+            subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { _ in
+                remaining -= 1
+                if remaining <= 0 {
+                    subscription?.cancel()
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     /// World point on the floor under a screen point, or nil when the ray misses the floor collider.
@@ -259,6 +313,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         if !isSessionRunning {
             startSession(resetTracking: true)
         }
+        // Use the calibration time (user aiming at the floor) to load the scene in the background.
+        beginPrefetch()
     }
 
     func recenter() {

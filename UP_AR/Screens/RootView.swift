@@ -13,32 +13,32 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            if appModel.shouldWarmUpShell {
-                ARViewContainer()
-                    .ignoresSafeArea()
-            }
-
-            if appModel.isShellReady {
-                switch appModel.phase {
-                case .start:
-                    StartView()
-                case .calibrating:
-                    CalibrationOverlay()
-                case .placed:
-                    PresentationHUD()
+            if appModel.phase == .start {
+                // The menu is pure SwiftUI — shown instantly, with no ARView/ARKit warmup behind it.
+                StartView()
+            } else {
+                if appModel.shouldWarmUpShell {
+                    ARViewContainer()
+                        .ignoresSafeArea()
                 }
 
-                if appModel.phase != .start {
-                    if appModel.showDebugOverlay {
+                if appModel.isShellReady {
+                    switch appModel.phase {
+                    case .start:       EmptyView()
+                    case .calibrating: CalibrationOverlay()
+                    case .loading:     LoadingView()
+                    case .placed:      PresentationHUD()
+                    }
+                    if appModel.showDebugOverlay && appModel.phase == .placed {
                         DebugOverlay()
                     }
+                } else {
+                    LoadingView()
                 }
-            } else {
-                LoadingView()
             }
         }
         .onAppear {
-            appModel.beginShellWarmup()
+            appModel.loadSceneCatalog()
         }
     }
 }
