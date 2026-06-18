@@ -5,9 +5,9 @@
 //  Resolves level files in the app bundle. Prefers an ASTC-compiled `.reality` sibling over the raw
 //  `.usdz` named in the manifest (the optimize script ships textured layers only as `.reality`), so the
 //  manifest never has to be touched. Content is split into per-scene subfolders (`Shared`, `Floor`,
-//  `Terrace`) plus typed media folders (`ProbesTextures`, `Videos`); layer file names are globally
-//  unique (LO_/TR_ prefixes), so we just search every content subfolder and fall back to a flat bundle
-//  lookup — no scene→folder mapping needed.
+//  `Terrace`) plus typed media folders (`ProbesTextures`, `Videos`, `Audio`, `SFX`); layer file names
+//  are globally unique (LO_/TR_ prefixes), so we just search every content subfolder and fall back to a
+//  flat bundle lookup — no scene→folder mapping needed.
 //
 
 import Foundation

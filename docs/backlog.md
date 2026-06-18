@@ -2,12 +2,6 @@
 
 Short list of things we deliberately deferred. Not committed reality yet; pick up when relevant.
 
-## Loading screen as a parametrised function
-Make the loading screen take its background **image as an input parameter** instead of a hardcoded
-asset name. Then we can either pass a specific image (e.g. per scene/brand) or do a "shuffle" (random
-from a set). Today `LoadingView` hardcodes `loading_screen`. Turn it into something like
-`LoadingView(image:)` and have the caller decide (specific vs shuffled).
-
 ## Xcode debug-session slowness (NOT an app problem)
 Launching/loading under the **Xcode debug session is ~3× slower and the session sometimes drops**.
 Running the same build **directly on the iPad (untethered)** is fast — scene load is near-instant.

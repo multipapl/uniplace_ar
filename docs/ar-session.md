@@ -1,7 +1,8 @@
 # AR session — the portal, calibration, teleport
 
 This is the core experience. `ARSessionController` owns it; `PortalEnvironment` configures the
-view; `SceneHierarchy` + `LocomotionController` handle movement.
+view; `SceneHierarchy` + `LocomotionController` handle movement; the audio controllers are built only
+after a scene is placed.
 
 ## The portal trick (`PortalEnvironment`)
 
@@ -45,8 +46,8 @@ originAnchor (calibrated floor pose)
 ```
 
 - **Physical walking** is free: ARKit moves the camera through this static tree.
-- **Teleport / recenter** mutate `locomotionRoot` only — the raw sensor pose is never overwritten
-  (a hard rule from the brief: teleport is an offset, not a pose write).
+- **Teleport / recenter / snap-turn** mutate `locomotionRoot` only — the raw sensor pose is never
+  overwritten (a hard rule from the brief: teleport is an offset, not a pose write).
 - **`nudgeHeight`** shifts `originAnchor.y` to correct a floor-height estimate.
 
 ## Teleport
@@ -55,7 +56,8 @@ One zero-delay long-press recognizer drives both phases (`handlePress`):
 
 - In **calibrating**, a press-release confirms the floor.
 - In **placed**, press/drag shows and moves a teleport target disc on the floor
-  (`updateTeleportPreview`), and release teleports there (`commitTeleport` → `performTeleport`).
+  (`updateTeleportPreview`), and release teleports there (`commitTeleport` → `performTeleport`). If
+  the press starts on the HomePod's visual bounds, release opens the audio panel instead.
 
 The floor target comes from a hit-test filtered by `LocomotionController.isPlausibleTarget`
 (rejects non-finite / absurdly distant hits). The shift itself is
@@ -63,9 +65,37 @@ The floor target comes from a hit-test filtered by `LocomotionController.isPlaus
 changes the viewer's height. `LocomotionController` is pure `simd` math with no RealityKit/ARKit
 deps so it is unit-testable.
 
+## Runtime controls
+
+The placed HUD exposes:
+
+- **Recenter** — `SceneHierarchy.recenter()`, clearing the locomotion offset back to the calibrated
+  spawn.
+- **Snap-turn** — rotates `locomotionRoot` by ±45° around the user's current ground point.
+- **Height nudge** — shifts `originAnchor.y` in 5 cm steps and mirrors the correction in `AppModel`.
+- **Open Level** — calls `reloadSelectedScene()` and swaps floor/terrace behind `LoadingView` without
+  asking for floor calibration again.
+- **Audio** — opens `NowPlayingCard` when the scene has a configured HomePod / tracks.
+
+On runtime scene switches, the controller tears down the old anchor and audio controllers before
+loading the replacement scene, so memory does not peak with two levels resident.
+
+## Scene audio
+
+`ARSessionController` configures the iOS audio session once, then builds audio from loaded content:
+
+- **HomePod music** — `HomepodProcessor` places a `MusicEmitter` in the layer; after placement the AR
+  controller finds it, scans `Content/Audio/`, prewarms the first track behind `LoadingView`, and
+  mirrors player state into `AppModel`.
+- **Ambient SFX** — manifest `ambient.sources` map `SFX_*` empties to looping clips in `Content/SFX/`;
+  `rooftopFile` is an optional non-positional ambience entity under `locomotionRoot`.
+- **Mixer** — `NowPlayingCard` exposes the music channel plus live SFX channels through
+  `setAudioChannelVolume`.
+
 ## Debug read-outs
 
-The `ARSessionDelegate` and the display-link `tick` feed FPS / tracking state / pose into
-`AppModel`, but only when the debug overlay is on. Frame-callback work hops to the main actor at
-~10 Hz max to stay cheap. First-frame / first-floor / scene-placed events are logged via
-`TimingDiagnostics` and `MemoryDiagnostics`.
+The `ARSessionDelegate` and the display-link `tick` feed FPS / tracking state / pose into `AppModel`,
+but only when the debug overlay is on. The same display link updates the music panel position while it
+is open. Frame-callback work hops to the main actor at ~1 Hz for tracking read-outs to stay cheap.
+First-frame / first-floor / scene-placed events are logged via `TimingDiagnostics` and
+`MemoryDiagnostics`.

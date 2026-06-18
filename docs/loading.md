@@ -25,10 +25,15 @@ ManifestLevelProvider(sceneId: appModel.selectedSceneId, fallback: PlaceholderLe
 ## One combined manifest, two scenes
 
 `Content/LevelManifest.json` is the single settings file (structure **and** material knobs — there is
-no separate material-config file). It has three sections: `shared` (layers loaded for every scene,
-e.g. the skybox), `scenes` (the selectable scenes — `floor`/`terrace`, each with its own `spawn` and
-`layers`), and `materials` (knobs grouped by processing `type`). A phone can't hold both scenes at
-once, so the loader resolves **one scene at a time**. See [content-pipeline.md](content-pipeline.md).
+no separate material-config file). It has four top-level runtime sections:
+
+- **`shared`** — layers loaded for every scene, e.g. the skybox.
+- **`scenes`** — selectable scenes (`floor`/`terrace`), each with `spawn`, `musicVolume`, and `layers`.
+- **`ambient`** — optional environmental SFX mapping for `SFX_*` empties and rooftop ambience.
+- **`materials`** — knobs grouped by processing `type`.
+
+A phone can't hold both scenes at once, so the loader resolves **one scene at a time**. See
+[content-pipeline.md](content-pipeline.md).
 
 ## Manifest-driven load (`ManifestLevelProvider.loadFromManifest`)
 
@@ -42,11 +47,16 @@ once, so the loader resolves **one scene at a time**. See [content-pipeline.md](
    origin. Only translation is applied — orientation stays the device's real heading.
 5. Wrap in a `LevelContent` root and return it.
 
+Audio setup is intentionally outside the provider: after `LevelContent` is placed,
+`ARSessionController` reads the same manifest for `musicVolume` / `ambient`, scans the loaded entity
+tree for the HomePod and `SFX_*` emitters, and starts audio before the loading screen is dismissed.
+
 ## Resource resolution (`LevelResourceLocator`)
 
 Resolves bundled files and **prefers a compiled `.reality` sibling over the `.usdz`** named in the
 manifest (the optimizer ships textured layers only as `.reality`, so the manifest never names anything
-but `.usdz`). Lookup searches the content subfolders (`Shared`, `Floor`, `Terrace`, `ProbesTextures`,
-`Videos`) then a flat-bundle fallback; layer file names are globally unique (LO_/TR_ prefixes) so no
-scene→folder mapping is needed. The manifest JSON — and static media like the fire video — are resolved
-through the same locator.
+but `.usdz`). Lookup searches `Shared`, `Floor`, `Terrace`, `ProbesTextures`, `Videos`, `Audio`, and
+`SFX`, then a flat-bundle fallback; layer file names are globally unique (LO_/TR_ prefixes) so no
+scene→folder mapping is needed. The manifest JSON, video loops, SFX clips, and probe maps are resolved
+through the same locator. Music tracks are scanned in bulk from `Content/Audio/` and are not listed in
+the manifest.

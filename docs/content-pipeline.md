@@ -4,21 +4,27 @@ How a level is described, how raw USDZ becomes bundled `.reality`, and what is a
 
 ## One combined manifest
 
-A level is described by a **single** human-editable file, `Content/LevelManifest.json`, with three
-sections:
+A level is described by a **single** human-editable file, `Content/LevelManifest.json`, with four
+runtime sections:
 
 ```json
 { "shared":  [ { "file": "Skybox.usdz", "type": "skybox" } ],
   "scenes":  [ { "id": "floor", "title": "Поверх",
+                 "musicVolume": 1.0,
                  "spawn": { "entity": "LO_StartPosition" },
                  "layers": [ { "file": "LO_Scene.usdz", "type": "unlit" }, … ] }, … ],
+  "ambient": { "sources": [ { "namePrefix": "SFX_Fireplace",
+                              "file": "SFX_Fireplace.mp3", "floor": "ground" } ] },
   "materials": { "reflect": { "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 }, … } }
 ```
 
 - **`shared`** — layers loaded for every scene (the skybox).
 - **`scenes`** — the selectable scenes (`floor`/`terrace`), each with its own `spawn` + `layers`.
   The apartment is split in two because a phone can't hold both at once; only one scene's layers are
-  resident at a time. Each layer names a `file` + a processing `type`.
+  resident at a time. Each layer names a `file` + a processing `type`. `musicVolume` is the per-scene
+  HomePod loudness scale (the discrete UP_AR equivalent of AVP's altitude ducking).
+- **`ambient`** — optional environmental audio: point-source SFX by entity prefix (`SFX_*`) plus a
+  rooftop ambience loop, all gated by the loaded scene.
 - **`materials`** — material knobs grouped by `type` (scene-independent: glass is glass everywhere).
   Folded into this one file on purpose — there is no separate material-config file.
 
@@ -53,20 +59,29 @@ affected layers). Per-layer overrides, regardless of the global cap:
 there is no per-texture ASTC pre-pass — the resolution cap is the real win. Note: `.reality` size on
 disk ≈ ASTC texels only; runtime RAM is larger (engine/AR baseline + mipmaps + IBL cubemaps).
 
-## Static media (videos)
+## Static media
 
 Runtime video clips (the looping `fire`) are **not** part of the optimizer — re-encoding alpha video is
 lossy and the clips are already small. They live as plain files in `Content/Videos/`, a typed media
-folder alongside `ProbesTextures/` (so a floor-only clip never sits in `Shared/`). A layer references one
-by name through its `fireVideo` knob and the loader resolves it from that folder. Drop the clip in by
-hand; it is gitignored and bundled like the optimizer's output.
+folder alongside `ProbesTextures/` (so a floor-only clip never sits in `Shared/`). `fireVideo` and
+`homepodScreenVideo` reference clips by name and the loader resolves them from that folder.
+
+Other local media folders are also gitignored but bundled by Xcode's synchronized group:
+
+- **`Content/Audio/`** — HomePod playlist tracks, scanned by extension and sorted by filename; not
+  listed in the manifest.
+- **`Content/SFX/`** — ambient loops referenced by the manifest's `ambient` block.
+- **`Content/Gallery/`** — presentation images/videos shown from the start screen. `LoadingView`
+  chooses a random still from here and falls back to `Content/UI/loading_screen.jpg` if none exist.
+
+Drop these files in by hand; they are not optimizer output.
 
 ## What goes in Git
 
 Source code and project structure only. **Heavy content is gitignored and stays local** — USDZ/USD/
 `.reality`, textures, audio, video, plus the generated optimizer output folders
-(`Content/Floor|Terrace|Shared|ProbesTextures`) and the static-media folder (`Content/Videos`). The only
-committed level data is the hand-authored
+(`Content/Floor|Terrace|Shared|ProbesTextures`) and local media folders
+(`Content/Videos|Audio|SFX|Gallery`). The only committed level data is the hand-authored
 `Content/LevelManifest.json` and the light UI images in `Content/UI/`.
 
 Do **not** modify the read-only USDZ source (`UP_AVP_Incoming` / the sync folder) — it is shared

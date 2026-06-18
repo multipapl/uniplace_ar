@@ -45,6 +45,9 @@ walk, UV re-pointing) lives in `MaterialSupport.swift` so processors stay small.
 - **`water`** — keeps its authored ShaderGraph material + reflection receiver only.
 - **`fire`** — animated fire: a looping alpha `VideoMaterial`. The clip is named by `fireVideo` and
   resolved from `Content/Videos/`. See the video note below.
+- **`homepod`** — in-scene HomePod: body is converted to unlit baked rendering, the screen gets a
+  looping opaque video, `SoundCollision` is hidden for now, and a tagged `MusicEmitter` is placed at
+  the body bounds centre with manifest-driven music tuning.
 - **`probes`** — invisible anchor planes; registers one IBL per probe into the shared
   `ReflectionEnvironment`, then hides the geometry. Ordered **before** reflect/glass/water.
 - **`navmesh`** — invisible nav surface: precise static-mesh collision for teleport, then hidden
@@ -57,7 +60,7 @@ The `probes` layer's planes mark where a 360° reflection was captured; each pla
 probe; reflect/glass/water point each model at the **nearest** probe. Two-probe blending is deferred
 (see docs/backlog.md). Probe maps are downscaled to 512 by the optimizer (cheap IBL).
 
-## Looping video (`fire`)
+## Looping video (`fire`, `homepod`)
 
 `LoopingVideoPlayback` (ported from the AVP fire path, where the video-decoder grief was solved) wraps
 an `AVQueuePlayer` + `AVPlayerLooper`: muted, stall-minimisation off, a small forward buffer, plus a
@@ -65,8 +68,16 @@ keep-alive task and a `timeControlStatus` observer that re-arm playback the inst
 player out from under us — without this the looping texture silently freezes. `FireProcessor` builds the
 `VideoMaterial`, applies it across the subtree, and attaches the playback via `FireVideoComponent` so the
 player's lifetime tracks the entity: a full scene teardown releases the component and `deinit` pauses the
-decoder. No app-level bookkeeping. The clip is a static media file (see content-pipeline.md), not a
-pipeline-produced layer.
+decoder. `HomepodProcessor` uses the same playback wrapper for its screen video, with depth writing on.
+No app-level video bookkeeping. The clips are static media files (see content-pipeline.md), not
+pipeline-produced layers.
+
+## HomePod music handoff
+
+The renderer does not play music. It tags the HomePod layer root with `HomepodComponent`, places a named
+`MusicEmitter`, and stores `MusicEmitterComponent` tuning (`musicShuffle`, `musicDefaultVolume`,
+`musicGainBoostDB`, optional reverb). `ARSessionController` later finds that emitter in the placed scene
+and builds `SpatialMusicController` from bundled tracks in `Content/Audio/`.
 
 ## Multi-UV materials
 
