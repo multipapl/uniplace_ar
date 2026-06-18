@@ -53,11 +53,20 @@ affected layers). Per-layer overrides, regardless of the global cap:
 there is no per-texture ASTC pre-pass — the resolution cap is the real win. Note: `.reality` size on
 disk ≈ ASTC texels only; runtime RAM is larger (engine/AR baseline + mipmaps + IBL cubemaps).
 
+## Static media (videos)
+
+Runtime video clips (the looping `fire`) are **not** part of the optimizer — re-encoding alpha video is
+lossy and the clips are already small. They live as plain files in `Content/Videos/`, a typed media
+folder alongside `ProbesTextures/` (so a floor-only clip never sits in `Shared/`). A layer references one
+by name through its `fireVideo` knob and the loader resolves it from that folder. Drop the clip in by
+hand; it is gitignored and bundled like the optimizer's output.
+
 ## What goes in Git
 
 Source code and project structure only. **Heavy content is gitignored and stays local** — USDZ/USD/
 `.reality`, textures, audio, video, plus the generated optimizer output folders
-(`Content/Floor|Terrace|Shared|ProbesTextures`). The only committed level data is the hand-authored
+(`Content/Floor|Terrace|Shared|ProbesTextures`) and the static-media folder (`Content/Videos`). The only
+committed level data is the hand-authored
 `Content/LevelManifest.json` and the light UI images in `Content/UI/`.
 
 Do **not** modify the read-only USDZ source (`UP_AVP_Incoming` / the sync folder) — it is shared

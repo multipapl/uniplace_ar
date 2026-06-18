@@ -46,6 +46,7 @@ once, so the loader resolves **one scene at a time**. See [content-pipeline.md](
 
 Resolves bundled files and **prefers a compiled `.reality` sibling over the `.usdz`** named in the
 manifest (the optimizer ships textured layers only as `.reality`, so the manifest never names anything
-but `.usdz`). Lookup searches the content subfolders (`Shared`, `Floor`, `Terrace`, `ProbesTextures`)
-then a flat-bundle fallback; layer file names are globally unique (LO_/TR_ prefixes) so no
-scene→folder mapping is needed. The manifest JSON is decoded through the same locator.
+but `.usdz`). Lookup searches the content subfolders (`Shared`, `Floor`, `Terrace`, `ProbesTextures`,
+`Videos`) then a flat-bundle fallback; layer file names are globally unique (LO_/TR_ prefixes) so no
+scene→folder mapping is needed. The manifest JSON — and static media like the fire video — are resolved
+through the same locator.

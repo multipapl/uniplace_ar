@@ -48,9 +48,9 @@ until ready. See `AppModel` and `ARSessionController`'s prefetch.
 - **`Diagnostics/`** — `TimingDiagnostics` (cold-start/session stopwatch logs), `MemoryDiagnostics`
   (physical-footprint read-out; memory is the hard limit, measured from Phase 1), `DebugOverlay`
   (FPS/tracking/pose, gated behind the menu toggle).
-- **`Content/`** — the hand-authored `LevelManifest.json`, light UI images (`UI/`), and the
-  optimizer's generated (gitignored) scene folders `Floor/`/`Terrace/`/`Shared/`/`ProbesTextures/`.
-  See [content-pipeline.md](content-pipeline.md).
+- **`Content/`** — the hand-authored `LevelManifest.json`, light UI images (`UI/`), the optimizer's
+  generated (gitignored) scene folders `Floor/`/`Terrace/`/`Shared/`/`ProbesTextures/`, and static media
+  in `Videos/`. See [content-pipeline.md](content-pipeline.md).
 - **`Tools/`** — `optimize_assets.py` + `optimize.command`, the local asset converter.
 
 ## The seams (where to plug in without touching everything)

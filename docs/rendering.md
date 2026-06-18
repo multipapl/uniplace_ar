@@ -32,8 +32,9 @@ walk, UV re-pointing) lives in `MaterialSupport.swift` so processors stay small.
 
 - **`unlit`** — base visible layer: strip authored lighting, convert every material to `UnlitMaterial`
   (`applyPostProcessToneMap: false`) so baked lighting shows as authored with zero realtime cost.
-- **`emission`** — self-lit surfaces split into their own layer; currently rendered as unlit
-  full-bright (its own type so it can diverge to additive/bloom later).
+- **`emission`** — self-lit surfaces split into their own layer: unlit, with the baked colour pushed
+  past 1.0 by a tint × brightness multiplier (`emissionBrightness`, default ×2) so it reads as a light
+  source. Its own type so it can diverge to additive/bloom later.
 - **`skybox`** — the shared sky dome: unlit, tinted/brightened, depth-writing background.
 - **`translucent`** — alpha-tested cutout (foliage). Drives the hard clip from the opacity mask;
   needs the multi-UV handling below.
@@ -42,6 +43,8 @@ walk, UV re-pointing) lives in `MaterialSupport.swift` so processors stay small.
   reflection receiver. Multi-UV.
 - **`glass`** — generated transparent PBR + reflection receiver.
 - **`water`** — keeps its authored ShaderGraph material + reflection receiver only.
+- **`fire`** — animated fire: a looping alpha `VideoMaterial`. The clip is named by `fireVideo` and
+  resolved from `Content/Videos/`. See the video note below.
 - **`probes`** — invisible anchor planes; registers one IBL per probe into the shared
   `ReflectionEnvironment`, then hides the geometry. Ordered **before** reflect/glass/water.
 - **`navmesh`** — invisible nav surface: precise static-mesh collision for teleport, then hidden
@@ -53,6 +56,17 @@ The `probes` layer's planes mark where a 360° reflection was captured; each pla
 `Content/ProbesTextures/probes.json`) to an extracted equirect env map. One IBL light is built per
 probe; reflect/glass/water point each model at the **nearest** probe. Two-probe blending is deferred
 (see docs/backlog.md). Probe maps are downscaled to 512 by the optimizer (cheap IBL).
+
+## Looping video (`fire`)
+
+`LoopingVideoPlayback` (ported from the AVP fire path, where the video-decoder grief was solved) wraps
+an `AVQueuePlayer` + `AVPlayerLooper`: muted, stall-minimisation off, a small forward buffer, plus a
+keep-alive task and a `timeControlStatus` observer that re-arm playback the instant anything pauses the
+player out from under us — without this the looping texture silently freezes. `FireProcessor` builds the
+`VideoMaterial`, applies it across the subtree, and attaches the playback via `FireVideoComponent` so the
+player's lifetime tracks the entity: a full scene teardown releases the component and `deinit` pauses the
+decoder. No app-level bookkeeping. The clip is a static media file (see content-pipeline.md), not a
+pipeline-produced layer.
 
 ## Multi-UV materials
 
