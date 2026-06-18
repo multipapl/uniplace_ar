@@ -34,6 +34,13 @@ struct MaterialConfig: Decodable {
         // fire (looping alpha video material)
         var fireVideo: String?
 
+        // clock (runtime texture synced to device local time)
+        var clockUVIndex: Int?
+        var clockUVRect: [Float]?
+        var clockTint: [Float]?
+        var clockFlipU: Bool?
+        var clockFlipV: Bool?
+
         // homepod (unlit body + looping screen video + spatial-music emitter)
         var homepodScreenEntity: String?   // mesh that receives the looping screen video
         var homepodScreenVideo: String?     // opaque looped video file driving the screen
