@@ -43,15 +43,8 @@ final class LoopingVideoPlayback {
         self.looper = AVPlayerLooper(player: player, templateItem: item)
 
         self.statusObservation = item.observe(\.status, options: [.new]) { item, _ in
-            switch item.status {
-            case .readyToPlay:
-                print("UP_AR fire video ready")
-            case .failed:
+            if item.status == .failed {
                 print("UP_AR fire video failed: \(item.error?.localizedDescription ?? "unknown error")")
-            case .unknown:
-                break
-            @unknown default:
-                break
             }
         }
         self.errorObservation = item.observe(\.error, options: [.new]) { item, _ in

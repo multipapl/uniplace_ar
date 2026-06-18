@@ -33,11 +33,6 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         ManifestLevelProvider(sceneId: appModel.selectedSceneId, fallback: PlaceholderLevelProvider())
     }
 
-    /// The scene is loaded in the background during calibration (prefetch), so confirming the floor
-    /// places an already-ready scene instead of freezing while it loads.
-    private var prefetchTask: Task<Entity, Error>?
-    private var prefetchedSceneId: String?
-
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
     private var lastCalibrationReadoutTimestamp: CFTimeInterval = 0
@@ -100,7 +95,6 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         isSessionRunning = false
         displayLink?.invalidate()
         displayLink = nil
-        cancelPrefetch()   // free any scene loaded for calibration if we're tearing the AR view down
     }
 
     // MARK: - Tap handling
@@ -158,10 +152,11 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         guard let arView else { return }
         defer { isPlacingScene = false }
 
-        // Consume the prefetch started at calibration; if it never ran, load now.
+        // All heavy loading happens here, behind the loading screen — never during calibration, where
+        // it would steal cycles from ARKit and stutter the camera.
         let content: Entity
         do {
-            content = try await (prefetchTask ?? Task { try await levelProvider.makeContent() }).value
+            content = try await levelProvider.makeContent()
         } catch {
             appModel.lastMessage = "Failed to load scene: \(error.localizedDescription)"
             appModel.phase = .calibrating
@@ -184,29 +179,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         // GPU texture-upload hitch on first display, so the reveal is clean rather than a stutter.
         await waitForSceneToRender(arView)
 
-        prefetchTask = nil
-        prefetchedSceneId = nil
         appModel.phase = .placed
         appModel.lastMessage = "Walk, tap to teleport, or recenter"
         MemoryDiagnostics.log("scene placed")
-    }
-
-    /// Start loading the selected scene in the background (during calibration) unless it is already
-    /// loading/loaded. Idempotent across calibration restarts for the same scene.
-    private func beginPrefetch() {
-        let sceneId = appModel.selectedSceneId
-        if prefetchedSceneId == sceneId, prefetchTask != nil { return }
-        prefetchTask?.cancel()
-        prefetchedSceneId = sceneId
-        let provider = levelProvider
-        MemoryDiagnostics.log("prefetch begin (\(sceneId))")
-        prefetchTask = Task { try await provider.makeContent() }
-    }
-
-    private func cancelPrefetch() {
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedSceneId = nil
     }
 
     /// Suspend until the scene has rendered `frames` updates, so the reveal lands after the first
@@ -313,8 +288,6 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         if !isSessionRunning {
             startSession(resetTracking: true)
         }
-        // Use the calibration time (user aiming at the floor) to load the scene in the background.
-        beginPrefetch()
     }
 
     func recenter() {
