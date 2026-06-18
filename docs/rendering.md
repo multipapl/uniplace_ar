@@ -7,18 +7,9 @@ existing processor.
 
 ## Dispatcher (`MaterialPipeline`)
 
-```swift
-static func standard() -> MaterialPipeline {
-    MaterialPipeline(processors: [
-        "unlit":   UnlitProcessor(),
-        "navmesh": NavmeshProcessor()
-    ])
-}
-```
-
-`process(entity, type:, params:, context:)` looks the type up in the registry and delegates. An
-unknown type is logged and left unprocessed (non-fatal). This `standard()` factory is the **single
-place** that knows which types exist.
+`MaterialPipeline.standard()` is the **single place** that knows which types exist — a registry
+mapping each `type` string to its processor. `process(entity, type:, params:, context:)` looks the
+type up and delegates; an unknown type is logged and left unprocessed (non-fatal).
 
 ## The protocol (`MaterialProcessor`)
 
@@ -28,23 +19,46 @@ protocol MaterialProcessor {
 }
 ```
 
-- **`params`** — the knobs for this type, read from `MaterialConfig` (see
-  [content-pipeline.md](content-pipeline.md)). Each processor reads only the fields it cares about.
-- **`context`** (`MaterialContext`) — shared state handed to every processor. Empty today; reserved
-  so coupled types (e.g. a reflection environment that reflect + glass must agree on) can be added
-  later **without changing the protocol**.
+- **`params`** — the knobs for this type, from the manifest's `materials` section. Each processor
+  reads only the fields it cares about.
+- **`context`** (`MaterialContext`, a reference type) — shared per-load state: the `worldRoot` (where
+  shared IBL lights attach), a bundle resource `resolve` closure, the shared `ReflectionEnvironment`,
+  and the `probesScene`. This is how coupled types agree on the same state.
 
-## Current processors
+Common recursion (strip authored lighting, PBR→Unlit conversion, tint maths, reflection-receiver
+walk, UV re-pointing) lives in `MaterialSupport.swift` so processors stay small.
 
-- **`UnlitProcessor`** (`type: "unlit"`) — the base visible layer. Recursively strips authored scene
-  lighting (directional/point/spot/IBL components) and converts every material to `UnlitMaterial`
-  with `applyPostProcessToneMap: false`, so baked lighting in the textures shows exactly as authored
-  with zero realtime lighting cost. PBR/Simple → Unlit (copying baseColor, blending,
-  opacityThreshold); ShaderGraph passes through; all get `faceCulling = .none`.
-- **`NavmeshProcessor`** (`type: "navmesh"`) — the navigation mesh (AVP's "Walkable", renamed):
-  invisible geometry that defines where teleport is allowed. Generates precise static-mesh collision
-  so teleport raycasts land only on valid floor, then removes the visible mesh. The `debugVisible`
-  knob (in `MaterialConfig`) instead draws it as a translucent cyan overlay for tuning.
+## Processors
+
+- **`unlit`** — base visible layer: strip authored lighting, convert every material to `UnlitMaterial`
+  (`applyPostProcessToneMap: false`) so baked lighting shows as authored with zero realtime cost.
+- **`emission`** — self-lit surfaces split into their own layer; currently rendered as unlit
+  full-bright (its own type so it can diverge to additive/bloom later).
+- **`skybox`** — the shared sky dome: unlit, tinted/brightened, depth-writing background.
+- **`translucent`** — alpha-tested cutout (foliage). Drives the hard clip from the opacity mask;
+  needs the multi-UV handling below.
+- **`curtains`** — sheer fabric: unlit, tinted, semi-transparent, depth pre-pass sort.
+- **`reflect`** — glossy non-glass surfaces: keeps PBR, optionally unpacks an ORM atlas, attaches a
+  reflection receiver. Multi-UV.
+- **`glass`** — generated transparent PBR + reflection receiver.
+- **`water`** — keeps its authored ShaderGraph material + reflection receiver only.
+- **`probes`** — invisible anchor planes; registers one IBL per probe into the shared
+  `ReflectionEnvironment`, then hides the geometry. Ordered **before** reflect/glass/water.
+- **`navmesh`** — invisible nav surface: precise static-mesh collision for teleport, then hidden
+  (`debugVisible` draws it as a cyan overlay for tuning).
+
+## Reflections (`ReflectionEnvironment`)
+
+The `probes` layer's planes mark where a 360° reflection was captured; each plane name maps (via
+`Content/ProbesTextures/probes.json`) to an extracted equirect env map. One IBL light is built per
+probe; reflect/glass/water point each model at the **nearest** probe. Two-probe blending is deferred
+(see docs/backlog.md). Probe maps are downscaled to 512 by the optimizer (cheap IBL).
+
+## Multi-UV materials
+
+Baked layers with >1 texture split them across two UV sets (baked base colour on UV1, everything else
+on UV0); RealityKit imports the wrong indices, so processors force them via manifest knobs
+(`*BaseColorUVIndex`, `*MaterialUVIndex` / `*AlphaUVIndex`). See the convention note in `AGENTS.md`.
 
 ## Adding a layer type
 
@@ -52,5 +66,4 @@ protocol MaterialProcessor {
 2. Register it in `MaterialPipeline.standard()` (one line).
 3. Add any new knobs as optional fields on `MaterialConfig.Params`.
 
-No changes to the loader, the manifest schema, or other processors. Phase 1 ships only `unlit` +
-`navmesh`; `glass`, `reflect`, etc. are the intended next types.
+No changes to the loader, the manifest schema, or other processors.

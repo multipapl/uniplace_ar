@@ -45,9 +45,19 @@ touching a subsystem; the docs are kept short on purpose.
   [docs/content-pipeline.md](docs/content-pipeline.md).
 - Do not modify the read-only USDZ source (`UP_AVP_Incoming` / the Resilio sync folder). It is the
   shared data source for both AVP and AR.
-- The asset optimizer stays **non-destructive**: it compiles at source texture resolution
-  (`MAX_TEXTURE_SIZE = None`). Texture downscaling is a deliberate manual step in the DCC, not in
-  the importer. Do not add auto-downscale.
+- The asset optimizer is **non-destructive**: it downscales only a temp copy and never touches the
+  source usdz. Default is source resolution; `--max-size N` is an opt-in global texture cap (the real
+  memory lever), with per-layer overrides — probe maps forced to 512, the **skybox exempt** (stays
+  8k). The artist still owns final texture resolution in the DCC; the cap is a coarse safety lever.
+
+**Content conventions (multi-UV).**
+- Wherever a material has **more than one texture**, the Blender bake splits them across two UV sets:
+  the **baked base colour** (`*_COMBINED`) is on the **`SimpleBake`** set → **UV index 1**, and **every
+  other texture** (opacity mask, roughness/metallic/normal/AO…) is on the **`st`** set → **UV index 0**.
+- RealityKit does **not** assign these UV indices correctly on import, so each material processor must
+  force them via the manifest knobs (`*BaseColorUVIndex: 1`, `*MaterialUVIndex` / `*AlphaUVIndex: 0`).
+  This is why `translucent` and `reflect` set those in `LevelManifest.json`; apply the same to any new
+  multi-texture layer (e.g. glass) or the textures sample the wrong UV.
 
 **Code.**
 - Keep files small and single-responsibility (see the architecture principles in the brief). One

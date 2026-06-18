@@ -6,22 +6,26 @@ app only talks to it through narrow protocols.
 
 ## App flow
 
-Three phases, driven by `AppPhase` and switched on in `RootView`:
+Four phases, driven by `AppPhase` and switched on in `RootView`:
 
 ```
-start ──(Open Virtual Camera)──▶ calibrating ──(tap floor to confirm)──▶ placed
-                                       ▲                                    │
-                                       └────────── recalibrate ◀────────────┘
+start ──(pick a scene)──▶ calibrating ──(tap floor)──▶ loading ──(fully loaded)──▶ placed
+                              ▲                                                       │
+                              └─────────────────── recalibrate ◀─────────────────────┘
 ```
 
-- **start** — `StartView`, a single entry button.
-- **calibrating** — aim the reticle at the floor; the tap sets the origin and the camera's eye
-  height above it.
+- **start** — `StartView`, a scene picker (one button per scene, listed from the manifest). Picking a
+  scene sets `selectedSceneId` and enters calibration. Pure SwiftUI — **no AR runs here**, so the
+  menu appears instantly with nothing heavy before it.
+- **calibrating** — aim the reticle at the floor; the chosen scene is prefetched in the background
+  during this time. The tap sets the origin and the camera's eye height.
+- **loading** — floor confirmed; a loading screen covers the scene until it is **fully** loaded and
+  has rendered (no half-built pop-in, no confirm freeze).
 - **placed** — the level is anchored on the floor; physical walking, teleport, and recenter are live.
 
-The shell warms up before the UI shows: `RootView` mounts the `ARView` (shell warmup), shows
-`LoadingView` until the first AR frame arrives, then reveals the phase UI. See `AppModel`'s
-`beginShellWarmup` / `finishShellWarmup`.
+The AR shell is only spun up on scene selection (not at launch): `openVirtualCamera` calls
+`beginShellWarmup`, `RootView` mounts the `ARView` for non-`start` phases, and `LoadingView` covers it
+until ready. See `AppModel` and `ARSessionController`'s prefetch.
 
 ## Module map
 
@@ -44,8 +48,9 @@ The shell warms up before the UI shows: `RootView` mounts the `ARView` (shell wa
 - **`Diagnostics/`** — `TimingDiagnostics` (cold-start/session stopwatch logs), `MemoryDiagnostics`
   (physical-footprint read-out; memory is the hard limit, measured from Phase 1), `DebugOverlay`
   (FPS/tracking/pose, gated behind the menu toggle).
-- **`Content/`** — bundled level data (`TestLevel/`) and light UI images (`UI/`). See
-  [content-pipeline.md](content-pipeline.md).
+- **`Content/`** — the hand-authored `LevelManifest.json`, light UI images (`UI/`), and the
+  optimizer's generated (gitignored) scene folders `Floor/`/`Terrace/`/`Shared/`/`ProbesTextures/`.
+  See [content-pipeline.md](content-pipeline.md).
 - **`Tools/`** — `optimize_assets.py` + `optimize.command`, the local asset converter.
 
 ## The seams (where to plug in without touching everything)
@@ -54,8 +59,8 @@ The shell warms up before the UI shows: `RootView` mounts the `ARView` (shell wa
    (`beginCalibration`, `recenter`, `recalibrate`, `nudgeHeight`); `ARSessionController` implements
    it. Keeps the model free of AR plumbing.
 2. **Level loading** via the `LevelProvider` protocol. `ARSessionController` only knows it gets an
-   `Entity` from `makeContent()`. The wired provider is `ManifestLevelProvider` with a
-   `PlaceholderLevelProvider` fallback.
+   `Entity` from `makeContent()`. The wired provider is `ManifestLevelProvider(sceneId:)` (the id from
+   the menu) with a `PlaceholderLevelProvider` fallback.
 3. **Material processing** via the `MaterialProcessor` registry in `MaterialPipeline`. A manifest
    layer's `type` string selects a processor; adding a type is a new file + one registration line.
 

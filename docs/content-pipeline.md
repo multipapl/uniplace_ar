@@ -2,62 +2,63 @@
 
 How a level is described, how raw USDZ becomes bundled `.reality`, and what is allowed in Git.
 
-## Two config files, on purpose
+## One combined manifest
 
-A level is described by **two** human-editable JSON files in `Content/TestLevel/`:
+A level is described by a **single** human-editable file, `Content/LevelManifest.json`, with three
+sections:
 
-- **`LevelManifest.json`** — the global file: **what** loads, **how** it renders (each layer names
-  its processing `type`), and **what relates to what** (the `spawn` empty). Holds **no** material
-  knob values. Decoded by `LevelManifest` (`Loading/`).
+```json
+{ "shared":  [ { "file": "Skybox.usdz", "type": "skybox" } ],
+  "scenes":  [ { "id": "floor", "title": "Поверх",
+                 "spawn": { "entity": "LO_StartPosition" },
+                 "layers": [ { "file": "LO_Scene.usdz", "type": "unlit" }, … ] }, … ],
+  "materials": { "reflect": { "reflectBaseColorUVIndex": 1, "reflectMaterialUVIndex": 0 }, … } }
+```
 
-  ```json
-  { "id": "test", "title": "Test Scene",
-    "spawn": { "entity": "StartPosition" },
-    "layers": [ { "file": "Scene.usdz",   "type": "unlit"   },
-                { "file": "Navmesh.usdz", "type": "navmesh" } ] }
-  ```
+- **`shared`** — layers loaded for every scene (the skybox).
+- **`scenes`** — the selectable scenes (`floor`/`terrace`), each with its own `spawn` + `layers`.
+  The apartment is split in two because a phone can't hold both at once; only one scene's layers are
+  resident at a time. Each layer names a `file` + a processing `type`.
+- **`materials`** — material knobs grouped by `type` (scene-independent: glass is glass everywhere).
+  Folded into this one file on purpose — there is no separate material-config file.
 
-- **`MaterialConfig.json`** — all material/processing **knobs**, grouped by layer `type`. A pipeline
-  renders every layer of a type uniformly; the tunable values (e.g. glass opacity, navmesh
-  `debugVisible`) belong here, not in the manifest. Decoded by `MaterialConfig`; `Params` is the
-  union of all knobs and each processor reads only what it needs. New knobs are added as optional
-  fields.
-
-  ```json
-  { "unlit": {}, "navmesh": { "debugVisible": false } }
-  ```
-
-Why split: the manifest is structural, the config is tuning. A non-programmer can edit either. See
-[rendering.md](rendering.md) for who consumes the `type` and the knobs.
+Decoded by `LevelManifest`; `materials` decodes to `MaterialConfig`. See [rendering.md](rendering.md)
+for who consumes the `type` and the knobs, and [loading.md](loading.md) for the load flow.
 
 ## The optimizer (`Tools/optimize_assets.py`)
 
-Single-pass converter from raw USDZ (synced into the Resilio folder, `SYNC_DIR`) into bundled
-layers in `Content/TestLevel/`:
+Single-pass converter from the raw USDZ layers in the Resilio sync folder (`SYNC_DIR`) into
+`UP_AR/Content/`:
 
-- **Textured layers** → unzip → `realitytool compile` → a GPU-ASTC `.reality`. Stays compressed in
-  VRAM.
-- **Geometry-only layers** (no textures, e.g. the navmesh) → copied through as plain `.usdz`.
+- **Routing by filename prefix** → a scene subfolder: `LO_*` → `Floor/`, `TR_*` → `Terrace/`, no
+  prefix → `Shared/`. The prefix is kept in the output name so every layer is globally unique.
+- **Textured layers** → unzip → (optional downscale) → `realitytool compile` → a GPU-ASTC `.reality`.
+- **Geometry-only layers** (e.g. navmesh) → copied through as plain `.usdz`.
+- **Probe layers** (`*_Probes`) → their plane env maps are extracted to `Content/ProbesTextures/` +
+  `probes.json` (plane→texture) for the runtime IBL.
 
-The manifest only ever names `.usdz`; the loader auto-prefers the `.reality` sibling
-(`LevelResourceLocator`), so the manifest is never touched. Incremental via a sha256 cache; run on
-demand (or via `optimize.command`) after Resilio finishes syncing.
+The manifest only names `.usdz`; the loader auto-prefers the `.reality` sibling. Incremental via a
+sha256 cache kept at the repo root (out of `Content/` so it is never bundled). Run on demand (or via
+`optimize.command`) after Resilio finishes syncing.
 
-**Two hard facts about the optimizer — do not relitigate:**
-- `realitytool compile` **always** re-encodes textures to its own ~5 bpp ASTC and **ignores** any
-  block-size flag. So there is no per-texture ASTC pre-pass; the ASTC→`.reality` step itself is the
-  real win.
-- The actual AR memory lever is **texture resolution**, and it is pulled **manually by the artist in
-  the DCC**, never by the importer. `MAX_TEXTURE_SIZE = None` (compile at source resolution) is the
-  default and must stay non-destructive — re-downscaling already-baked textures is a lossy
-  double-downscale. The dormant `--max-size`/sips path is left unused, not removed.
+### Texture caps (`--max-size`)
+The memory lever is **texture resolution**. `--max-size N` downscales any texture whose longest edge
+exceeds `N` (non-destructive: it works on a temp copy, never the source usdz; the sha256 cache rebuilds
+affected layers). Per-layer overrides, regardless of the global cap:
+
+- **Probe maps → 512** (they feed IBL cubemaps, heavy in VRAM; 512 equirect is plenty).
+- **Skybox → never capped** (must stay 8k or the sky reads as mush).
+
+`realitytool compile` always re-encodes textures to its own ASTC and ignores any block-size flag, so
+there is no per-texture ASTC pre-pass — the resolution cap is the real win. Note: `.reality` size on
+disk ≈ ASTC texels only; runtime RAM is larger (engine/AR baseline + mipmaps + IBL cubemaps).
 
 ## What goes in Git
 
 Source code and project structure only. **Heavy content is gitignored and stays local** — USDZ/USD/
-`.reality`/`.rcproject`, all textures (png/jpg/heic/exr/hdr/ktx…), audio, and video. Content flows
-through Resilio + the optimizer, not through Git. The only committed assets are app-icon catalog
-entries and the light UI images in `Content/UI/` (explicitly un-ignored in `.gitignore`).
+`.reality`, textures, audio, video, plus the generated optimizer output folders
+(`Content/Floor|Terrace|Shared|ProbesTextures`). The only committed level data is the hand-authored
+`Content/LevelManifest.json` and the light UI images in `Content/UI/`.
 
 Do **not** modify the read-only USDZ source (`UP_AVP_Incoming` / the sync folder) — it is shared
 between the AVP and AR pipelines.
