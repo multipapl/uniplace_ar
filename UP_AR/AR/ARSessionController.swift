@@ -37,12 +37,14 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     /// The in-scene HomePod player, built from the placed scene's `MusicEmitter`. Nil when the scene
     /// has no HomePod / no bundled tracks. The homepod root is kept for the tap-to-open gesture.
     private var musicController: SpatialMusicController?
+    private var ambientController: AmbientSoundController?
     private weak var homepodEntity: Entity?
     private var pressOnHomepod = false
     private var lastMusicReadout: CFTimeInterval = 0
 
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
+    private var lastFPSReadoutTimestamp: CFTimeInterval = 0
     private var lastCalibrationReadoutTimestamp: CFTimeInterval = 0
     private let calibrationPreviewDelay: CFTimeInterval = 0.9
 
@@ -114,7 +116,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         isSessionRunning = false
         displayLink?.invalidate()
         displayLink = nil
-        teardownMusic()
+        teardownSceneAudio()
     }
 
     // MARK: - Tap handling
@@ -186,6 +188,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         guard let arView else { return }
         defer { isPlacingScene = false }
 
+        // On runtime scene switches, drop the old level and all audio before loading the new one.
+        // This keeps memory from peaking with two apartments resident and cuts SFX during LoadingView.
+        unloadCurrentScene()
+
         // All heavy loading happens here, behind the loading screen — never during calibration, where
         // it would steal cycles from ARKit and stutter the camera.
         let content: Entity
@@ -196,10 +202,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             appModel.phase = .calibrating
             return
         }
+        let audioSettings = currentSceneAudioSettings()
 
-        if let old = hierarchy {
-            arView.scene.removeAnchor(old.originAnchor)
-        }
         let newHierarchy = SceneHierarchy(floorTransform: floorTransform, content: content)
         arView.scene.addAnchor(newHierarchy.originAnchor)
         hierarchy = newHierarchy
@@ -209,9 +213,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.floorDetected = false
         latestCalibrationFloorTransform = nil
 
-        // Build the HomePod music player from the placed content (if the scene has one). Done before the
-        // reveal so the HUD's music affordance is ready the moment the scene appears.
-        setupMusic(in: content)
+        // Build scene audio before the reveal so ambient starts and the HUD's music affordance is ready
+        // the moment the scene appears.
+        setupSceneAudio(in: content, hierarchy: newHierarchy, settings: audioSettings)
 
         // Keep the loading screen up until the scene has actually rendered a few frames — this covers the
         // GPU texture-upload hitch on first display, so the reveal is clean rather than a stutter.
@@ -328,16 +332,30 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         }
     }
 
+    func returnToMainMenu() {
+        unloadCurrentScene()
+        removeTeleportPreview()
+        removeCalibrationPreview()
+        appModel.audioChannels = []
+    }
+
+    func reloadSelectedScene() {
+        guard let hierarchy else {
+            appModel.openVirtualCamera()
+            return
+        }
+        let floorTransform = hierarchy.originAnchor.transformMatrix(relativeTo: nil)
+        let eyeHeight = appModel.eyeHeight
+        unloadCurrentScene()
+        Task { await placeScene(floorTransform: floorTransform, eyeHeight: eyeHeight) }
+    }
+
     func recenter() {
         hierarchy?.recenter()
     }
 
     func recalibrate() {
-        if let arView, let old = hierarchy {
-            arView.scene.removeAnchor(old.originAnchor)
-        }
-        hierarchy = nil
-        teardownMusic()
+        unloadCurrentScene()
         appModel.phase = .calibrating
         beginCalibration()
     }
@@ -346,6 +364,14 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         hierarchy?.nudgeHeight(delta)
         appModel.heightNudge += delta
         appModel.eyeHeight -= delta   // raising the scene lowers the apparent eye height
+    }
+
+    func snapTurn(_ degrees: Float) {
+        guard let arView, let hierarchy else { return }
+        let camera = arView.cameraTransform.translation
+        let floorY = hierarchy.originAnchor.position(relativeTo: nil).y
+        let pivot = SIMD3<Float>(camera.x, floorY, camera.z)
+        hierarchy.rotateScene(degrees: degrees, aroundWorldPoint: pivot)
     }
 
     func musicTogglePlayPause() {
@@ -376,13 +402,161 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         syncMusicState()
     }
 
-    // MARK: - Music
+    func setAudioChannelVolume(id: String, volume: Float) {
+        let clamped = Self.clampUnit(volume)
+        switch id {
+        case "music":
+            musicController?.setVolume(clamped)
+            syncMusicState()
+        case "rooftop":
+            ambientController?.setRooftopVolume(clamped)
+        default:
+            ambientController?.setChannelVolume(id, clamped)
+        }
+    }
+
+    // MARK: - Scene audio
+
+    private struct SceneAudioSettings {
+        let musicVolume: Float
+        let ambient: AmbientSoundController.Configuration?
+    }
+
+    private func setupSceneAudio(in content: Entity, hierarchy: SceneHierarchy, settings: SceneAudioSettings) {
+        setupAmbient(in: content, worldRoot: hierarchy.locomotionRoot, configuration: settings.ambient)
+        setupMusic(in: content, environmentScale: settings.musicVolume)
+        appModel.audioChannels = mixerChannels(for: settings)
+    }
+
+    private func teardownSceneAudio() {
+        ambientController?.stop()
+        ambientController = nil
+        teardownMusic()
+        appModel.audioChannels = []
+    }
+
+    private func unloadCurrentScene() {
+        teardownSceneAudio()
+        removeTeleportPreview()
+        if let arView, let old = hierarchy {
+            arView.scene.removeAnchor(old.originAnchor)
+        }
+        hierarchy = nil
+    }
+
+    private func currentSceneAudioSettings() -> SceneAudioSettings {
+        guard let manifest = try? LevelResourceLocator().loadManifest(named: "LevelManifest"),
+              let scene = manifest.scene(id: appModel.selectedSceneId) else {
+            return SceneAudioSettings(musicVolume: 1, ambient: nil)
+        }
+        return SceneAudioSettings(
+            musicVolume: Self.clampUnit(scene.musicVolume ?? 1),
+            ambient: ambientConfiguration(for: scene, ambient: manifest.ambient)
+        )
+    }
+
+    private func ambientConfiguration(
+        for scene: LevelManifest.Scene,
+        ambient: LevelManifest.Ambient?
+    ) -> AmbientSoundController.Configuration? {
+        guard let ambient else { return nil }
+        let sources = (ambient.sources ?? [])
+            .filter { ambientFloor($0.floor, appliesTo: scene.id) }
+            .map {
+                AmbientSoundController.Configuration.Source(
+                    namePrefix: $0.namePrefix,
+                    file: $0.file,
+                    volume: Self.clampUnit($0.volume ?? 1),
+                    attenuationRadius: max($0.attenuationRadius ?? 5, 0.1)
+                )
+            }
+        let rooftopFile = ambientFloor("terrace", appliesTo: scene.id) ? ambient.rooftopFile : nil
+        guard !sources.isEmpty || rooftopFile != nil else { return nil }
+        return AmbientSoundController.Configuration(
+            sources: sources,
+            rooftopFile: rooftopFile,
+            rooftopVolume: Self.clampUnit(ambient.rooftopVolume ?? 0.6),
+            rooftopYawDegrees: ambient.rooftopYawDegrees ?? 0
+        )
+    }
+
+    private func ambientFloor(_ floor: String?, appliesTo sceneId: String) -> Bool {
+        let gate = (floor ?? "any").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch gate {
+        case "", "any", "all":
+            return true
+        case "ground", "floor":
+            return sceneId == "floor"
+        case "terrace", "roof", "rooftop":
+            return sceneId == "terrace"
+        default:
+            return gate == sceneId.lowercased()
+        }
+    }
+
+    private func setupAmbient(
+        in content: Entity,
+        worldRoot: Entity,
+        configuration: AmbientSoundController.Configuration?
+    ) {
+        guard let configuration else { return }
+        let controller = AmbientSoundController(
+            configuration: configuration,
+            sceneRoot: content,
+            worldRoot: worldRoot,
+            locator: LevelResourceLocator()
+        )
+        ambientController = controller
+        controller.start()
+        MemoryDiagnostics.log("ambient ready")
+    }
+
+    private func mixerChannels(for settings: SceneAudioSettings) -> [AppModel.AudioChannel] {
+        var channels: [AppModel.AudioChannel] = []
+        if musicController != nil {
+            channels.append(AppModel.AudioChannel(
+                id: "music",
+                title: "Music",
+                systemImage: "music.note",
+                volume: appModel.musicVolume
+            ))
+        }
+
+        for source in settings.ambient?.sources ?? [] {
+            channels.append(AppModel.AudioChannel(
+                id: source.namePrefix,
+                title: mixerTitle(for: source.namePrefix),
+                systemImage: mixerIcon(for: source.namePrefix),
+                volume: source.volume
+            ))
+        }
+        if settings.ambient?.rooftopFile != nil {
+            channels.append(AppModel.AudioChannel(
+                id: "rooftop",
+                title: "Rooftop",
+                systemImage: "wind",
+                volume: settings.ambient?.rooftopVolume ?? 0.6
+            ))
+        }
+        return channels
+    }
+
+    private func mixerTitle(for namePrefix: String) -> String {
+        namePrefix.replacingOccurrences(of: "SFX_", with: "")
+    }
+
+    private func mixerIcon(for namePrefix: String) -> String {
+        let lowered = namePrefix.lowercased()
+        if lowered.contains("fire") { return "flame" }
+        if lowered.contains("water") { return "drop" }
+        if lowered.contains("street") { return "building.2" }
+        return "speaker.wave.2"
+    }
 
     /// Build the HomePod player from the placed content: find the named `MusicEmitter` (placed by
     /// `HomepodProcessor`), read its tuning, and scan the bundled tracks. Inert when the scene has no
     /// HomePod or no tracks are bundled. Playback is manual — the user starts it from the panel.
-    private func setupMusic(in content: Entity) {
-        teardownMusic()
+    private func setupMusic(in content: Entity, environmentScale: Float) {
         guard let emitter = content.findEntity(named: "MusicEmitter"),
               let config = emitter.components[MusicEmitterComponent.self] else { return }
 
@@ -401,6 +575,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             gainBoost: Audio.Decibel(config.gainBoostDB),
             reverb: musicReverb(preset: config.reverbPreset, levelDB: config.reverbLevelDB)
         )
+        controller.setEnvironmentScale(environmentScale)
         musicController = controller
         appModel.musicAvailable = true
         // Warm the first track + audio engine now, behind the loading screen, so hitting play later is
@@ -425,6 +600,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.showMusicPanel = false
     }
 
+    private static func clampUnit(_ value: Float) -> Float {
+        min(max(value, 0), 1)
+    }
+
     /// Mirror the controller's published state onto AppModel for the now-playing card. Called after each
     /// control action and (with the playback position) periodically while the panel is open.
     private func syncMusicState() {
@@ -435,6 +614,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.musicArtworkData = music.currentArtworkData
         appModel.musicDuration = music.currentTrackDuration
         appModel.musicVolume = music.volume
+        appModel.updateAudioChannelVolume(id: "music", volume: music.volume)
         appModel.musicShuffle = music.isShuffleEnabled
     }
 
@@ -516,15 +696,13 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             appModel.finishShellWarmup()
         }
 
-        guard timestamp - lastReadoutHop > 0.1 else { return }
+        guard timestamp - lastReadoutHop > 1.0 else { return }
         lastReadoutHop = timestamp
 
         let tracking = Self.label(for: frame.camera.trackingState)
-        let c = frame.camera.transform.columns.3
-        let pose = String(format: "x %.2f  y %.2f  z %.2f", c.x, c.y, c.z)
 
         Task { @MainActor [weak self] in
-            self?.consumeReadout(tracking: tracking, pose: pose)
+            self?.consumeReadout(tracking: tracking)
         }
     }
 
@@ -535,10 +713,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         }
     }
 
-    private func consumeReadout(tracking: String, pose: String) {
+    private func consumeReadout(tracking: String) {
         guard appModel.showDebugOverlay else { return }
         appModel.trackingStateLabel = tracking
-        appModel.poseLabel = pose
     }
 
     nonisolated private static func label(for state: ARCamera.TrackingState) -> String {
@@ -570,6 +747,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         updateCalibrationReadout()
         if appModel.showMusicPanel { updateMusicReadout() }
         guard appModel.showDebugOverlay, lastFrameTimestamp != 0 else { return }
+        guard link.timestamp - lastFPSReadoutTimestamp >= 1.0 else { return }
+        lastFPSReadoutTimestamp = link.timestamp
         let dt = link.timestamp - lastFrameTimestamp
         if dt > 0 { appModel.fps = 1.0 / dt }
     }

@@ -21,7 +21,7 @@ struct LevelResourceLocator {
     static let audioSubdirectory = "Audio"
     private static let audioExtensions = ["mp3", "m4a", "aac", "wav", "caf", "aiff"]
 
-    init(subdirectories: [String] = ["Shared", "Floor", "Terrace", "ProbesTextures", "Videos", "Audio"], bundle: Bundle = .main) {
+    init(subdirectories: [String] = ["Shared", "Floor", "Terrace", "ProbesTextures", "Videos", "Audio", "SFX"], bundle: Bundle = .main) {
         self.subdirectories = subdirectories
         self.bundle = bundle
     }

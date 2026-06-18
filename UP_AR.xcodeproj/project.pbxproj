@@ -16,7 +16,9 @@
 			explicitFolders = (
 				Content/Audio,
 				Content/Floor,
+				Content/Gallery,
 				Content/ProbesTextures,
+				Content/SFX,
 				Content/Shared,
 				Content/Terrace,
 				Content/UI,

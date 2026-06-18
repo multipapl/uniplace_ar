@@ -50,6 +50,10 @@ final class SpatialMusicController {
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var shouldBePlaying = false
     @ObservationIgnored private var consecutiveLoadFailures = 0
+    /// Per-scene loudness multiplier applied on top of the user volume (1 = full). Used to limit the
+    /// HomePod music on the terrace the way AVP ducks it by altitude — UP_AR loads scenes separately,
+    /// so the duck is a fixed per-scene scale set once at setup rather than a live altitude crossfade.
+    @ObservationIgnored private var environmentScale: Float = 1
 
     /// Silence floor. Below this a track is effectively inaudible; we fade to here instead of -inf so
     /// the engine always has a finite target.
@@ -156,6 +160,14 @@ final class SpatialMusicController {
     func setVolume(_ value: Float) {
         volume = Self.clampUnit(value)
         controller?.fade(to: currentGainDB, duration: volumeFadeDuration)
+    }
+
+    /// Set the per-scene loudness scale (1 = full). Applied on top of the user volume.
+    func setEnvironmentScale(_ scale: Float) {
+        let clamped = Self.clampUnit(scale)
+        guard abs(clamped - environmentScale) > 0.001 else { return }
+        environmentScale = clamped
+        controller?.fade(to: currentGainDB, duration: 0.25)
     }
 
     func setShuffle(_ enabled: Bool) {
@@ -286,9 +298,9 @@ final class SpatialMusicController {
     }
 
     private var currentGainDB: Audio.Decibel {
-        // Below the silence floor when fully muted; otherwise the user level in dB plus the fixed
-        // calibration boost that compensates for the emitter's spatial distance attenuation.
-        let linear = Self.clampUnit(volume)
+        // Below the silence floor when fully muted; otherwise the user level (scaled per scene) in dB
+        // plus the fixed calibration boost that compensates for the emitter's distance attenuation.
+        let linear = Self.clampUnit(volume) * Self.clampUnit(environmentScale)
         guard linear > 0.0001 else { return silenceFloorDB }
         return max(Audio.Decibel(20 * log10(Double(linear))) + gainBoost, silenceFloorDB)
     }

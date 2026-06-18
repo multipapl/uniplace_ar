@@ -14,9 +14,12 @@ import Observation
 @MainActor
 protocol ARExperienceActions: AnyObject {
     func beginCalibration()
+    func returnToMainMenu()
+    func reloadSelectedScene()
     func recenter()
     func recalibrate()
     func nudgeHeight(_ delta: Float)
+    func snapTurn(_ degrees: Float)
 
     // Spatial-music controls — they need the live scene's emitter, so they live behind this delegate
     // just like the calibration/teleport intents. The controller's state is mirrored back onto AppModel.
@@ -26,6 +29,7 @@ protocol ARExperienceActions: AnyObject {
     func musicSetVolume(_ volume: Float)
     func musicSeek(to seconds: TimeInterval)
     func musicSetShuffle(_ enabled: Bool)
+    func setAudioChannelVolume(id: String, volume: Float)
 }
 
 @MainActor
@@ -36,6 +40,14 @@ final class AppModel {
     struct SceneOption: Identifiable, Equatable {
         let id: String
         let title: String
+    }
+
+    /// One live audio mixer channel surfaced in the HomePod panel.
+    struct AudioChannel: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let systemImage: String
+        var volume: Float
     }
 
     var phase: AppPhase = .start
@@ -56,6 +68,10 @@ final class AppModel {
     // HUD / overlay toggles.
     var showMenu = false
     var showDebugOverlay = false
+    var showFloorPicker = false
+    var showGallery = false
+    var showSettings = false
+    var showLocomotionPanel = false
 
     // Debug read-outs (written by the session delegate / display link, gated behind the overlay).
     var fps: Double = 0
@@ -74,6 +90,7 @@ final class AppModel {
     var musicVolume: Float = 0.6
     var musicShuffle = false
     var showMusicPanel = false
+    var audioChannels: [AudioChannel] = []
 
     /// Delegate to the live AR experience. Weak to avoid a retain cycle with the controller.
     @ObservationIgnored weak var actions: ARExperienceActions?
@@ -106,8 +123,31 @@ final class AppModel {
     /// Pick a scene on the start menu, then enter calibration. The AR session is only spun up here —
     /// never at launch — so the menu appears instantly and nothing heavy runs before it.
     func selectScene(_ id: String) {
+        showFloorPicker = false
         selectedSceneId = id
         openVirtualCamera()
+    }
+
+    func switchScene(_ id: String) {
+        guard id != selectedSceneId else {
+            showFloorPicker = false
+            showMenu = false
+            return
+        }
+        selectedSceneId = id
+        showFloorPicker = false
+        showMenu = false
+        showMusicPanel = false
+        showLocomotionPanel = false
+        lastMessage = "Loading"
+        if phase == .placed || phase == .loading {
+            phase = .loading
+            DispatchQueue.main.async { [weak self] in
+                self?.actions?.reloadSelectedScene()
+            }
+        } else {
+            openVirtualCamera()
+        }
     }
 
     func openVirtualCamera() {
@@ -120,18 +160,48 @@ final class AppModel {
         actions?.beginCalibration()  // no-op until the ARView mounts; attach() re-runs it
     }
 
+    func returnToMainMenu() {
+        showMenu = false
+        showMusicPanel = false
+        showFloorPicker = false
+        showGallery = false
+        showSettings = false
+        showLocomotionPanel = false
+        showDebugOverlay = false
+        floorDetected = false
+        calibrationTitle = "Looking for the floor"
+        lastMessage = "Ready"
+        audioChannels = []
+        actions?.returnToMainMenu()
+        phase = .start
+        shouldWarmUpShell = false
+        isShellReady = false
+    }
+
     func recenter() {
+        showLocomotionPanel = false
         actions?.recenter()
         lastMessage = "Recentered"
     }
 
     func recalibrate() {
         showMenu = false
+        showLocomotionPanel = false
         actions?.recalibrate()
     }
 
     func nudgeHeight(_ delta: Float) {
         actions?.nudgeHeight(delta)
+    }
+
+    func snapTurnLeft() {
+        actions?.snapTurn(45)
+        lastMessage = "Turned left 45°"
+    }
+
+    func snapTurnRight() {
+        actions?.snapTurn(-45)
+        lastMessage = "Turned right 45°"
     }
 
     // MARK: Music intents (forwarded to the live controller via `actions`)
@@ -145,6 +215,7 @@ final class AppModel {
 
     func setMusicVolume(_ value: Float) {
         musicVolume = min(max(value, 0), 1)
+        updateAudioChannelVolume(id: "music", volume: musicVolume)
         actions?.musicSetVolume(musicVolume)
     }
 
@@ -156,5 +227,19 @@ final class AppModel {
     func setMusicShuffle(_ enabled: Bool) {
         musicShuffle = enabled
         actions?.musicSetShuffle(enabled)
+    }
+
+    func setAudioChannelVolume(id: String, _ value: Float) {
+        let clamped = min(max(value, 0), 1)
+        updateAudioChannelVolume(id: id, volume: clamped)
+        if id == "music" {
+            musicVolume = clamped
+        }
+        actions?.setAudioChannelVolume(id: id, volume: clamped)
+    }
+
+    func updateAudioChannelVolume(id: String, volume: Float) {
+        guard let index = audioChannels.firstIndex(where: { $0.id == id }) else { return }
+        audioChannels[index].volume = min(max(volume, 0), 1)
     }
 }

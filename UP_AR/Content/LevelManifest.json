@@ -5,8 +5,9 @@
   "scenes": [
     {
       "id": "floor",
-      "title": "Поверх",
+      "title": "7th Floor",
       "spawn": { "entity": "LO_StartPosition" },
+      "musicVolume": 1.0,
       "layers": [
         { "file": "LO_Scene.usdz",       "type": "unlit" },
         { "file": "LO_Probes.usdz",      "type": "probes" },
@@ -22,15 +23,27 @@
     },
     {
       "id": "terrace",
-      "title": "Тераса",
+      "title": "Terrace",
       "spawn": { "entity": "TR_StartPosition" },
+      "musicVolume": 0.02,
       "layers": [
         { "file": "TR_Scene.usdz",       "type": "unlit" },
         { "file": "TR_Translusent.usdz", "type": "translucent" },
+        { "file": "LO_Homepod.usdz",     "type": "homepod" },
         { "file": "TR_Navmesh.usdz",     "type": "navmesh" }
       ]
     }
   ],
+  "ambient": {
+    "sources": [
+      { "namePrefix": "SFX_AmbientStreet", "file": "SFX_AmbientStreet.mp3", "volume": 0.09, "attenuationRadius": 1.3, "floor": "any" },
+      { "namePrefix": "SFX_Fireplace",     "file": "SFX_Fireplace.mp3",     "volume": 0.7,  "attenuationRadius": 4.0, "floor": "ground" },
+      { "namePrefix": "SFX_Water",         "file": "SFX_Water.mp3",         "volume": 0.6,  "attenuationRadius": 4.0, "floor": "terrace" }
+    ],
+    "rooftopFile": "SFX_Rooftop.mp3",
+    "rooftopVolume": 0.6,
+    "rooftopYawDegrees": 180
+  },
   "materials": {
     "unlit": {},
     "skybox": {},

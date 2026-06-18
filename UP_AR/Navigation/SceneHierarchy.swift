@@ -37,8 +37,23 @@ final class SceneHierarchy {
         locomotionRoot.setPosition(current + worldShift, relativeTo: nil)
     }
 
+    /// Rotate the virtual scene around the user's current ground position.
+    func rotateScene(degrees: Float, aroundWorldPoint pivot: SIMD3<Float>) {
+        let radians = degrees * .pi / 180
+        let rotation = simd_float4x4(simd_quatf(angle: radians, axis: [0, 1, 0]))
+        let transform = translationMatrix(pivot) * rotation * translationMatrix(-pivot) *
+            locomotionRoot.transformMatrix(relativeTo: nil)
+        locomotionRoot.setTransformMatrix(transform, relativeTo: nil)
+    }
+
     /// Nudge the whole scene vertically to correct a floor-height estimate.
     func nudgeHeight(_ delta: Float) {
         originAnchor.position.y += delta
+    }
+
+    private func translationMatrix(_ translation: SIMD3<Float>) -> simd_float4x4 {
+        var matrix = matrix_identity_float4x4
+        matrix.columns.3 = SIMD4<Float>(translation.x, translation.y, translation.z, 1)
+        return matrix
     }
 }
