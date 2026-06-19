@@ -14,11 +14,17 @@ struct UP_ARApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(appModel)
-                .onAppear {
-                    TimingDiagnostics.log("root view appeared")
-                }
+            // Developer preview harness (see __SnapshotHarness.swift / Tools/snapshot.sh).
+            // Never set in production, so the real app path is unaffected.
+            if let snapshot = ProcessInfo.processInfo.environment["UP_SNAPSHOT_VIEW"] {
+                SnapshotHarness.liveView(named: snapshot)
+            } else {
+                RootView()
+                    .environment(appModel)
+                    .onAppear {
+                        TimingDiagnostics.log("root view appeared")
+                    }
+            }
         }
     }
 }

@@ -14,24 +14,30 @@ struct PresentationHUD: View {
         @Bindable var appModel = appModel
         GeometryReader { proxy in
             let isPhone = proxy.size.width < 600
+            // While a modal panel is up, the top-right Help button is redundant and
+            // (on phone, full-width panels) collides with the panel's own close button.
+            let modalOpen = appModel.showHelpPanel || appModel.showMenu
+                || appModel.showSettings || appModel.showFloorPicker || appModel.showMusicPanel
 
             ZStack {
-                VStack {
-                    HStack {
-                        Spacer()
-                        ChromeIconButton(
-                            systemName: "questionmark",
-                            title: "Help",
-                            isSelected: appModel.showHelpPanel
-                        ) {
-                            closeSecondaryPanels()
-                            appModel.showHelpPanel = true
+                if !modalOpen {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            ChromeIconButton(
+                                systemName: "questionmark",
+                                title: "Help",
+                                isSelected: appModel.showHelpPanel
+                            ) {
+                                closeSecondaryPanels()
+                                appModel.showHelpPanel = true
+                            }
                         }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 18)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
 
-                    Spacer()
+                        Spacer()
+                    }
                 }
 
                 if !(isPhone && appModel.showMusicPanel) {
@@ -100,16 +106,24 @@ struct PresentationHUD: View {
                             .onTapGesture {
                                 appModel.showHelpPanel = false
                             }
-                        HelpPanel()
+                        HelpPanel(maxContentHeight: isPhone ? proxy.size.height * 0.58 : 560)
                     }
                 }
 
                 if appModel.showMusicPanel {
-                    RuntimeOverlay(alignment: isPhone ? .center : .bottom) {
+                    RuntimeOverlay(alignment: .bottom) {
+                        if isPhone {
+                            Color.black.opacity(0.32)
+                                .ignoresSafeArea()
+                                .onTapGesture {
+                                    appModel.showMusicPanel = false
+                                }
+                        }
                         NowPlayingCard(compact: isPhone) {
                             appModel.showMusicPanel = false
                         }
-                        .frame(maxWidth: isPhone ? .infinity : 520, maxHeight: isPhone ? .infinity : 650)
+                        .frame(maxWidth: isPhone ? .infinity : 520,
+                               maxHeight: isPhone ? proxy.size.height * 0.72 : 650)
                         .background(AppChrome.panelFill, in: RoundedRectangle(cornerRadius: AppChrome.panelRadius))
                         .overlay {
                             RoundedRectangle(cornerRadius: AppChrome.panelRadius)
@@ -117,8 +131,7 @@ struct PresentationHUD: View {
                         }
                         .foregroundStyle(.black)
                         .padding(.horizontal, isPhone ? 12 : 16)
-                        .padding(.vertical, isPhone ? 12 : 0)
-                        .padding(.bottom, isPhone ? 0 : 18)
+                        .padding(.bottom, isPhone ? 12 : 18)
                     }
                 }
             }
@@ -299,6 +312,7 @@ private struct SettingsPanel: View {
 
 private struct HelpPanel: View {
     @Environment(AppModel.self) private var appModel
+    var maxContentHeight: CGFloat = 560
 
     var body: some View {
         ChromePanel {
@@ -399,7 +413,7 @@ private struct HelpPanel: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(maxHeight: 560)
+                .frame(maxHeight: maxContentHeight)
 
                 ChromePlainButton(title: "Back", systemName: "chevron.left") {
                     appModel.showHelpPanel = false

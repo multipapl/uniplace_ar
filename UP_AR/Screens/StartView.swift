@@ -43,9 +43,13 @@ struct StartView: View {
                         }
                     }
                     .frame(maxWidth: AppChrome.maxPanelWidth)
-                    .padding(.bottom, isPhone ? 24 : 60)
+                    .padding(.bottom, isPhone ? 32 : 60)
                 }
                 .padding(.horizontal, isPhone ? 16 : 22)
+                // The floor picker floats over this content; fade it out so the hero title
+                // doesn't bleed through the translucent panel.
+                .opacity(appModel.showFloorPicker ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: appModel.showFloorPicker)
 
                 if appModel.showFloorPicker {
                     Color.black.opacity(0.32)

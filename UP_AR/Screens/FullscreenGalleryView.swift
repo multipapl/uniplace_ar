@@ -5,14 +5,19 @@
 //  Full-screen presentation gallery for bundled stills and videos.
 //
 
+import AVFoundation
 import AVKit
 import SwiftUI
+import UIKit
 
 struct FullscreenGalleryView: View {
+    /// Item to open on first appearance (deep-link / preview entry point).
+    var initialIndex = 0
     @Environment(AppModel.self) private var appModel
     @State private var items = GalleryLibrary.items()
     @State private var selectedIndex = 0
     @State private var chromeVisible = true
+    @State private var slideEdge: Edge = .trailing
 
     private var selectedItem: GalleryMediaItem? {
         guard items.indices.contains(selectedIndex) else { return nil }
@@ -24,15 +29,33 @@ struct FullscreenGalleryView: View {
             Color.black.ignoresSafeArea()
 
             if let selectedItem {
+                // Keyed by index so paging swaps identity and slides; the controls-free
+                // video view (see GalleryVideoView) lets taps/swipes through, so a tap
+                // always toggles the chrome and there's no way to get stuck.
                 GalleryStage(item: selectedItem, showTitle: chromeVisible)
+                    .id(selectedIndex)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: slideEdge),
+                        removal: .move(edge: slideEdge == .trailing ? .leading : .trailing)
+                    ).combined(with: .opacity))
                     .ignoresSafeArea(edges: chromeVisible ? [] : .all)
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        if !chromeVisible {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                chromeVisible = true
-                            }
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            chromeVisible.toggle()
                         }
                     }
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { value in
+                                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                                if value.translation.width <= -40 {
+                                    paginate(by: 1)
+                                } else if value.translation.width >= 40 {
+                                    paginate(by: -1)
+                                }
+                            }
+                    )
 
                 if chromeVisible {
                     galleryChrome(selectedItem: selectedItem)
@@ -48,7 +71,22 @@ struct FullscreenGalleryView: View {
         .persistentSystemOverlays(chromeVisible ? .automatic : .hidden)
         .onAppear {
             items = GalleryLibrary.items()
-            selectedIndex = min(selectedIndex, max(items.count - 1, 0))
+            selectedIndex = min(max(initialIndex, 0), max(items.count - 1, 0))
+        }
+    }
+
+    /// Move the selection by `delta`, clamped, sliding in the matching direction.
+    private func paginate(by delta: Int) {
+        let target = selectedIndex + delta
+        guard items.indices.contains(target) else { return }
+        select(target)
+    }
+
+    private func select(_ index: Int) {
+        guard index != selectedIndex else { return }
+        slideEdge = index > selectedIndex ? .trailing : .leading
+        withAnimation(.easeInOut(duration: 0.28)) {
+            selectedIndex = index
         }
     }
 
@@ -71,7 +109,7 @@ struct FullscreenGalleryView: View {
 
             Spacer()
 
-            GalleryFilmstrip(items: items, selectedIndex: $selectedIndex)
+            GalleryFilmstrip(items: items, selectedIndex: selectedIndex, onSelect: select)
                 .frame(height: 96)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
@@ -149,14 +187,15 @@ private struct GalleryStage: View {
 
 private struct GalleryFilmstrip: View {
     let items: [GalleryMediaItem]
-    @Binding var selectedIndex: Int
+    let selectedIndex: Int
+    let onSelect: (Int) -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     Button {
-                        selectedIndex = index
+                        onSelect(index)
                     } label: {
                         GalleryThumbnail(item: item, isSelected: index == selectedIndex)
                     }
@@ -248,26 +287,56 @@ private struct GalleryImageView: View {
     }
 }
 
-private struct GalleryVideoView: View {
+/// Looping, controls-free video. Native `VideoPlayer` chrome (with its volume button) used to
+/// swallow taps, trapping the user when the gallery interface was hidden — this renders straight
+/// into an AVPlayerLayer so taps and swipes reach the gallery's own gestures.
+private struct GalleryVideoView: UIViewRepresentable {
     let url: URL
-    @State private var player: AVPlayer?
 
-    var body: some View {
-        ZStack {
-            if let player {
-                VideoPlayer(player: player)
-            } else {
-                ProgressView()
-                    .tint(.white)
-            }
-        }
-        .task(id: url) {
-            let player = AVPlayer(url: url)
-            self.player = player
-            player.play()
-        }
-        .onDisappear {
-            player?.pause()
-        }
+    func makeUIView(context: Context) -> LoopingPlayerView {
+        LoopingPlayerView(url: url)
+    }
+
+    func updateUIView(_ uiView: LoopingPlayerView, context: Context) {
+        uiView.load(url: url)
+    }
+
+    static func dismantleUIView(_ uiView: LoopingPlayerView, coordinator: ()) {
+        uiView.stop()
+    }
+}
+
+final class LoopingPlayerView: UIView {
+    override static var layerClass: AnyClass { AVPlayerLayer.self }
+    private var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+    private var queuePlayer: AVQueuePlayer?
+    private var looper: AVPlayerLooper?
+    private var loadedURL: URL?
+
+    init(url: URL) {
+        super.init(frame: .zero)
+        backgroundColor = .black
+        playerLayer.videoGravity = .resizeAspect
+        load(url: url)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func load(url: URL) {
+        guard url != loadedURL else { return }
+        loadedURL = url
+        let queue = AVQueuePlayer()
+        looper = AVPlayerLooper(player: queue, templateItem: AVPlayerItem(url: url))
+        playerLayer.player = queue
+        queuePlayer = queue
+        queue.play()
+    }
+
+    func stop() {
+        queuePlayer?.pause()
+        queuePlayer = nil
+        looper = nil
+        playerLayer.player = nil
     }
 }
