@@ -46,8 +46,9 @@ walk, UV re-pointing) lives in `MaterialSupport.swift` so processors stay small.
 - **`fire`** — animated fire: a looping alpha `VideoMaterial`. The clip is named by `fireVideo` and
   resolved from `Content/Videos/`. See the video note below.
 - **`homepod`** — in-scene HomePod: body is converted to unlit baked rendering, the screen gets a
-  looping opaque video, `SoundCollision` is hidden for now, and a tagged `MusicEmitter` is placed at
-  the body bounds centre with manifest-driven music tuning.
+  looping opaque video, `SoundCollision` is hidden for now, a tagged `MusicEmitter` is placed at
+  the body bounds centre with manifest-driven music tuning, and a Fresnel rim-glow shell is built
+  to signal interactivity (see below).
 - **`probes`** — invisible anchor planes; registers one IBL per probe into the shared
   `ReflectionEnvironment`, then hides the geometry. Ordered **before** reflect/glass/water.
 - **`navmesh`** — invisible nav surface: precise static-mesh collision for teleport, then hidden
@@ -78,6 +79,19 @@ The renderer does not play music. It tags the HomePod layer root with `HomepodCo
 `MusicEmitter`, and stores `MusicEmitterComponent` tuning (`musicShuffle`, `musicDefaultVolume`,
 `musicGainBoostDB`, optional reverb). `ARSessionController` later finds that emitter in the placed scene
 and builds `SpatialMusicController` from bundled tracks in `Content/Audio/`.
+
+## HomePod interactive glow (first `CustomMaterial`)
+
+To signal the HomePod is tappable on a handheld (no hover state), `HomepodProcessor.buildRimShell`
+clones the body mesh, scales it ~2 % about its **bounds centre** (not its origin, which sits at the
+scene origin via Blender "Apply Location"), and renders it with the project's first **Metal
+`CustomMaterial`** — a Fresnel surface shader (`Rendering/HomepodRimGlow.metal`, function
+`homepodRimSurface`): transparent head-on, glowing toward the silhouette, unlit. The shader compiles
+into the app's **default Metal library** automatically (file-system-synchronized target); a missing
+device/library/shader degrades to no glow (no crash). The shell starts at `OpacityComponent` 0;
+`ARSessionController.updateHomepodRim` (display-link tick) fades it in by **proximity to the shell's
+visual centre** and applies a ~2 s breathing pulse. Shader knobs (`kPower`, `kMaxOpacity`,
+`kEmissiveBoost`, `kGlow`) are constants in the `.metal`; range/pulse live in `updateHomepodRim`.
 
 ## Multi-UV materials
 

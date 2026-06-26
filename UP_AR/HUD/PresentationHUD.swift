@@ -365,7 +365,7 @@ private struct HelpPanel: View {
                                 .init(
                                     systemName: "square.grid.2x2",
                                     title: "Open Level",
-                                    detail: "Switch between the 7th Floor and Terrace without returning to calibration."
+                                    detail: "Switch between the 11th Floor and Terrace without returning to calibration."
                                 ),
                                 .init(
                                     systemName: "photo.on.rectangle",

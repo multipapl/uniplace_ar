@@ -79,7 +79,9 @@ One zero-delay long-press recognizer drives both phases (`handlePress`):
 - In **calibrating**, a press-release confirms the floor.
 - In **placed**, press/drag shows and moves a teleport target disc on the floor
   (`updateTeleportPreview`), and release teleports there (`commitTeleport` → `performTeleport`). If
-  the press starts on the HomePod's visual bounds, release opens the audio panel instead.
+  the press starts on the HomePod's visual bounds, release opens the audio panel instead. That the
+  HomePod is tappable is signalled by a **Fresnel rim glow** that fades in as the viewer approaches
+  (`updateHomepodRim`, on the tick) — the handheld stand-in for a hover state; see the rendering doc.
 
 The floor target comes from a hit-test filtered by `LocomotionController.isPlausibleTarget`
 (rejects non-finite / absurdly distant hits). The shift itself is

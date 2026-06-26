@@ -42,6 +42,8 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var musicController: SpatialMusicController?
     private var ambientController: AmbientSoundController?
     private weak var homepodEntity: Entity?
+    /// The HomePod rim-glow shell (built by `HomepodProcessor`), faded in by viewer proximity each tick.
+    private weak var homepodRimEntity: Entity?
     private var pressOnHomepod = false
     private var lastMusicReadout: CFTimeInterval = 0
 
@@ -320,7 +322,11 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     /// the marker falls back to the procedural disc.
     private func preloadTeleportMarkerTexture() async {
         guard teleportMarkerTexture == nil else { return }
-        teleportMarkerTexture = try? await TextureResource(named: "TeleportMarker")
+        // Decode via UIKit first: RealityKit's `TextureResource(named:)` fails to decode asset-catalog
+        // images ("Image decoding failed"), but UIImage reads the catalog fine, and RealityKit ingests
+        // the resulting CGImage without trouble. Absent/undecodable ⇒ the procedural disc is used.
+        guard let cgImage = UIImage(named: "TeleportMarker")?.cgImage else { return }
+        teleportMarkerTexture = try? await TextureResource(image: cgImage, options: .init(semantic: .color))
     }
 
     private func makeTeleportPreviewDisc() -> ModelEntity {
@@ -659,6 +665,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         }
 
         homepodEntity = homepodRoot(of: emitter)
+        homepodRimEntity = homepodEntity?.findEntity(named: "HomepodRimShell")
         let controller = SpatialMusicController(
             emitter: emitter,
             tracks: tracks,
@@ -681,6 +688,7 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         musicController?.stop()
         musicController = nil
         homepodEntity = nil
+        homepodRimEntity = nil
         pressOnHomepod = false
         appModel.musicAvailable = false
         appModel.musicIsPlaying = false
@@ -837,12 +845,32 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     @objc private func tick(_ link: CADisplayLink) {
         defer { lastFrameTimestamp = link.timestamp }
         updateCalibrationReadout()
+        updateHomepodRim()
         if appModel.showMusicPanel { updateMusicReadout() }
         guard appModel.showDebugOverlay, lastFrameTimestamp != 0 else { return }
         guard link.timestamp - lastFPSReadoutTimestamp >= 1.0 else { return }
         lastFPSReadoutTimestamp = link.timestamp
         let dt = link.timestamp - lastFrameTimestamp
         if dt > 0 { appModel.fps = 1.0 / dt }
+    }
+
+    /// Fade the HomePod rim glow in as the viewer approaches: invisible beyond `far`, full by `near`.
+    /// Runs every tick; the `OpacityComponent` set is cheap and only the shell (a small mesh) is touched.
+    private func updateHomepodRim() {
+        guard appModel.phase == .placed, let shell = homepodRimEntity, let arView else { return }
+        let near: Float = 1.5   // full glow at/under this distance (m)
+        let far: Float = 4.0    // fully faded out beyond this
+        // Measure to the shell's VISUAL centre, not its transform origin: the HomePod body's origin sits
+        // at the scene origin (Blender "Apply Location"), so `.position` would be metres off — the same
+        // trap the MusicEmitter avoids by using the bounds centre.
+        let target = shell.visualBounds(relativeTo: nil).center
+        let distance = simd_distance(arView.cameraTransform.translation, target)
+        let proximity = simd_clamp((far - distance) / (far - near), 0, 1)
+        // ~2 s breathing pulse on top of the proximity fade (0.3…1.0, so it never blinks fully off).
+        let period = 2.0
+        let phase = CACurrentMediaTime().truncatingRemainder(dividingBy: period) / period * 2 * .pi
+        let pulse = Float(0.65 + 0.35 * sin(phase))
+        shell.components.set(OpacityComponent(opacity: proximity * pulse))
     }
 
     private func updateCalibrationReadout() {

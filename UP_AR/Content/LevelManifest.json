@@ -5,7 +5,7 @@
   "scenes": [
     {
       "id": "floor",
-      "title": "7th Floor",
+      "title": "11th Floor",
       "spawn": { "entity": "LO_StartPosition", "yawDegrees": -90 },
       "musicVolume": 1.0,
       "skyboxHeightOffset": 0.0,

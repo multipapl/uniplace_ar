@@ -85,7 +85,7 @@ enum SnapshotHarness {
     private static func baseModel() -> AppModel {
         let m = AppModel()
         m.phase = .placed
-        m.scenes = [.init(id: "floor7", title: "7th Floor"), .init(id: "terrace", title: "Terrace")]
+        m.scenes = [.init(id: "floor7", title: "11th Floor"), .init(id: "terrace", title: "Terrace")]
         m.selectedSceneId = "floor7"
         m.musicAvailable = true
         m.musicIsPlaying = true

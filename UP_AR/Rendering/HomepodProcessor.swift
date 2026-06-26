@@ -14,10 +14,15 @@
 //
 
 import RealityKit
+import Metal
 
 /// Marks the HomePod layer root so the AR session can find it (for the tap-to-open-music gesture) and
 /// walk down to the `MusicEmitter`.
 struct HomepodComponent: Component {}
+
+/// Marks the Fresnel rim-glow shell (`HomepodRimShell`) so the AR session can fade it in/out by
+/// viewer proximity via `OpacityComponent` — the handheld "this is interactive" affordance.
+struct HomepodRimComponent: Component {}
 
 /// Holds the HomePod screen's video playback so its lifetime tracks the entity it is attached to.
 struct HomepodScreenComponent: Component {
@@ -49,6 +54,59 @@ struct HomepodProcessor: MaterialProcessor {
 
         applyScreenVideo(to: entity, params: params, context: context)
         placeMusicEmitter(in: entity, params: params)
+        buildRimShell(in: entity, params: params)
+    }
+
+    /// Build the interactive rim-glow shell: a ~2% enlarged copy of the body rendered with the Fresnel
+    /// `CustomMaterial`, so it is invisible head-on and glows toward the silhouette. It starts fully
+    /// transparent (`OpacityComponent` 0); the AR session fades it in by viewer proximity. No-op when
+    /// the body entity is missing or the Metal shader can't be built (then the HomePod just has no glow).
+    private func buildRimShell(in entity: Entity, params: MaterialConfig.Params) {
+        guard let body = params.homepodBodyEntity.flatMap({ entity.findEntity(named: $0) }),
+              let material = Self.makeRimMaterial() else { return }
+
+        let shell = body.clone(recursive: true)
+        shell.name = "HomepodRimShell"
+        shell.transform = .identity            // sit coincident with the body, then scale about its centre
+        applyRimMaterial(material, to: shell)
+
+        let scale: Float = 1.02
+        let center = body.visualBounds(relativeTo: body).center
+        shell.scale = SIMD3<Float>(repeating: scale)
+        shell.position = center * (1 - scale)  // scale about the bounds centre, not the local origin
+
+        shell.components.set(HomepodRimComponent())
+        shell.components.set(OpacityComponent(opacity: 0))   // hidden until proximity fades it in
+        body.addChild(shell)
+    }
+
+    private func applyRimMaterial(_ material: any RealityKit.Material, to entity: Entity) {
+        if var model = entity.components[ModelComponent.self] {
+            model.materials = Array(repeating: material, count: max(model.materials.count, 1))
+            entity.components[ModelComponent.self] = model
+        }
+        // The shell is glow-only: drop any cloned collision so it never intercepts the teleport/tap ray.
+        entity.components.remove(CollisionComponent.self)
+        for child in entity.children {
+            applyRimMaterial(material, to: child)
+        }
+    }
+
+    /// Build the Fresnel rim `CustomMaterial` from the app's default Metal library. Returns nil (and the
+    /// HomePod simply gets no glow) if the device/library/shader function is unavailable.
+    static func makeRimMaterial() -> CustomMaterial? {
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let library = device.makeDefaultLibrary() else { return nil }
+        do {
+            let surfaceShader = CustomMaterial.SurfaceShader(named: "homepodRimSurface", in: library)
+            var material = try CustomMaterial(surfaceShader: surfaceShader, lightingModel: .unlit)
+            material.faceCulling = .back
+            material.blending = .transparent(opacity: 1.0)   // per-pixel opacity comes from the shader
+            return material
+        } catch {
+            TimingDiagnostics.log("homepod rim: shader unavailable — \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Override the screen mesh with the looping video material (opaque, writes depth so it occludes
