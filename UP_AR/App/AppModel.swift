@@ -206,7 +206,9 @@ final class AppModel {
     }
 
     func nudgeHeight(_ delta: Float) {
-        actions?.nudgeHeight(delta)
+        // The buttons read as viewer movement (Up raises the eye), which is the opposite sign of the
+        // underlying scene height nudge — invert here so every caller stays in viewer terms.
+        actions?.nudgeHeight(-delta)
     }
 
     func setRenderScale(_ value: Double) {
@@ -224,12 +226,12 @@ final class AppModel {
     }
 
     func snapTurnLeft() {
-        actions?.snapTurn(45)
+        actions?.snapTurn(-45)
         lastMessage = "Turned left 45°"
     }
 
     func snapTurnRight() {
-        actions?.snapTurn(-45)
+        actions?.snapTurn(45)
         lastMessage = "Turned right 45°"
     }
 
