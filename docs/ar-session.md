@@ -87,6 +87,15 @@ The floor target comes from a hit-test filtered by `LocomotionController.isPlaus
 changes the viewer's height. `LocomotionController` is pure `simd` math with no RealityKit/ARKit
 deps so it is unit-testable.
 
+**Marker appearance** (`makeTeleportPreviewDisc`) — a flat unlit plane ~0.4 m across, lifted ~3 cm
+off the floor so it draws above rugs rather than z-fighting under them, with a subtle looping scale
+pulse. The pulse lives on the disc, which is a *child* of the anchor that follows the finger, so the
+per-touch repositioning moves the parent only and never disturbs the animation (the decoupling that
+avoids flicker). The art is overridable: a square alpha-gradient PNG in the `TeleportMarker`
+asset-catalog image becomes the disc texture, its alpha shaping the silhouette and soft edge; with no
+such image it falls back to a procedurally rounded cyan disc. The texture is preloaded once at scene
+placement so the first teleport gesture never loads mid-drag.
+
 ## Runtime controls
 
 The placed HUD exposes:
