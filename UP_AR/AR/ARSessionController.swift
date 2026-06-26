@@ -22,6 +22,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
     private var calibrationPreviewPlane: ModelEntity?
     private var teleportPreviewAnchor: AnchorEntity?
     private var teleportPreviewDisc: ModelEntity?
+    /// Optional custom marker art (Assets catalog "TeleportMarker"), preloaded once. Absent ⇒ the
+    /// procedural disc is used instead.
+    private var teleportMarkerTexture: TextureResource?
     private var pendingTeleportTarget: SIMD3<Float>?
     private var latestCalibrationFloorTransform: simd_float4x4?
     private var calibrationStartedAt: CFTimeInterval = 0
@@ -232,6 +235,10 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         // the moment the scene appears.
         setupSceneAudio(in: content, hierarchy: newHierarchy, settings: audioSettings)
 
+        // Warm the optional teleport-marker texture once, well before the first teleport touch, so the
+        // marker is built off a cached resource rather than loading mid-gesture.
+        await preloadTeleportMarkerTexture()
+
         // Keep the loading screen up until the scene has actually rendered a few frames — this covers the
         // GPU texture-upload hitch on first display, so the reveal is clean rather than a stutter.
         await waitForSceneToRender(arView)
@@ -279,7 +286,9 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
             teleportPreviewAnchor = anchor
             arView.scene.addAnchor(anchor)
         }
-        anchor.setPosition(target + SIMD3<Float>(0, 0.01, 0), relativeTo: nil)
+        // Lift the marker ~3 cm off the floor so it draws above rugs/carpets instead of z-fighting
+        // under them.
+        anchor.setPosition(target + SIMD3<Float>(0, 0.03, 0), relativeTo: nil)
 
         if teleportPreviewDisc == nil {
             let disc = makeTeleportPreviewDisc()
@@ -307,15 +316,48 @@ final class ARSessionController: NSObject, ARSessionDelegate, ARExperienceAction
         appModel.lastMessage = "Teleported"
     }
 
+    /// Load the optional custom marker texture from the asset catalog once. Missing asset is fine —
+    /// the marker falls back to the procedural disc.
+    private func preloadTeleportMarkerTexture() async {
+        guard teleportMarkerTexture == nil else { return }
+        teleportMarkerTexture = try? await TextureResource(named: "TeleportMarker")
+    }
+
     private func makeTeleportPreviewDisc() -> ModelEntity {
-        let radius: Float = 0.45
+        let radius: Float = 0.4
         var material = UnlitMaterial(color: UIColor(red: 0.25, green: 0.95, blue: 1.0, alpha: 0.5))
-        material.blending = .transparent(opacity: 0.5)
         material.faceCulling = .none
-        let mesh = MeshResource.generatePlane(width: radius * 2, depth: radius * 2, cornerRadius: radius)
+
+        let mesh: MeshResource
+        if let texture = teleportMarkerTexture {
+            // Custom art: the texture's own alpha gradient defines the silhouette and soft edge, so the
+            // mesh is just a flat square and the tint stays white to show the art's colours unaltered.
+            material.color = .init(tint: .white, texture: .init(texture))
+            material.blending = .transparent(opacity: 1.0)
+            mesh = .generatePlane(width: radius * 2, depth: radius * 2)
+        } else {
+            // Fallback until a "TeleportMarker" image is added to the catalog: a procedural rounded disc.
+            material.blending = .transparent(opacity: 0.5)
+            mesh = .generatePlane(width: radius * 2, depth: radius * 2, cornerRadius: radius)
+        }
+
         let disc = ModelEntity(mesh: mesh, materials: [material])
         disc.name = "TeleportPreview"
+        addPulse(to: disc)
         return disc
+    }
+
+    /// Gentle looping scale pulse. It lives on the disc, which is a *child* of the anchor that follows
+    /// the finger — so the per-touch position updates move the parent only and never re-touch this
+    /// animation. That decoupling is what avoids the AVP flicker (there the marker entity itself was
+    /// repositioned every frame, stepping on its own animation).
+    private func addPulse(to disc: ModelEntity) {
+        var small = disc.transform; small.scale = SIMD3<Float>(repeating: 0.9)
+        var large = disc.transform; large.scale = SIMD3<Float>(repeating: 1.0)
+        guard let pulse = try? AnimationResource.generate(with: FromToByAnimation(
+            from: small, to: large, duration: 0.8, timing: .easeInOut,
+            bindTarget: .transform, repeatMode: .autoReverse)) else { return }
+        disc.playAnimation(pulse.repeat())
     }
 
     private func removeTeleportPreview() {
